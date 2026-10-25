@@ -1,0 +1,10 @@
+{
+  "project": "decoupled-delta-net",
+  "device": "mps",
+  "seq_len": 1024,
+  "throughput_tok_s": 572.4433846550096,
+  "ms_per_token": 1.746897644039791,
+  "surprise_rate": 0.9975562071848701,
+  "gate_passed": true,
+  "timestamp": 1792952350.105063
+}

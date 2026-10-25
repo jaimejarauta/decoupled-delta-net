@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "decoupled-delta-net"
+version = "0.1.0"
+description = "Sub-quadratic linear recurrence with surprise-triggered error reservoir"
+authors = [{ name = "Jaime Jarauta", email = "jaime.jarauta@gmail.com" }]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.2.0",
+    "numpy>=1.24.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "wandb>=0.16.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
