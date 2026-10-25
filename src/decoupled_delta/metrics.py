@@ -43,3 +43,4 @@ def benchmark_associative_throughput(
         "seq_len": seq_len,
         "surprise_rate": telem.get("layer_0_surprise_rate", 0.0),
     }
+

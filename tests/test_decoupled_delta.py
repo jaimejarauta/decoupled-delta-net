@@ -24,3 +24,4 @@ def test_mqar_task_generation():
     batch = generate_mqar_batch(seq_len=64, num_pairs=4, vocab_size=100, batch_size=2)
     assert batch["input_ids"].shape == (2, 63)
     assert batch["target_val"].shape == (2,)
+

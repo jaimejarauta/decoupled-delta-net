@@ -24,3 +24,4 @@ We split sequence memory into:
    If $z_t = 1$, store $(k_t, e_t)$ in circular reservoir $R_t$.
 4. Readout:
    $$y_t = q_t S_t + \sum_{m \in R_t} \text{softmax}\left(\frac{q_t k_m^\top}{\sqrt{d_k}}\right) e_m$$
+

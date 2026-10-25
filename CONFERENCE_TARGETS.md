@@ -30,3 +30,4 @@
 **Working Title:** *Decoupled Delta-Net: Eliminating Associative Memory Decay via Surprise-Gated Error Reservoirs*
 
 **Abstract Hook:** Linear recurrent sequence models offer linear inference complexity but suffer catastrophic associative forgetting during needle-in-a-haystack tasks due to continuous, low-rank overwriting of state matrices. We present Decoupled Delta-Net, which decouples continuous delta-rule state evolution from a discrete error reservoir triggered exclusively by prediction surprises. On 32k-token Multi-Query Associative Recall, Decoupled Delta-Net matches full softmax attention retrieval while preserving $O(1)$ memory state complexity per head.
+
