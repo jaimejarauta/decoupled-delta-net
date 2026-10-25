@@ -10,31 +10,32 @@ import torch.nn.functional as F
 class ErrorReservoir:
     """Fixed-capacity circular reservoir caching high-surprise prediction residuals."""
 
-    def __init__(self, capacity: int = 128, d_k: int = 32, d_v: int = 32, device: torch.device = torch.device("cpu")):
+    def __init__(self, capacity: int = 128, d_k: int = 32, d_v: int = 32, device: torch.device = torch.device("cpu"), dtype: torch.dtype = torch.float32):
         self.capacity = capacity
         self.d_k = d_k
         self.d_v = d_v
         self.device = device
-        self.k_buffer = torch.zeros(capacity, d_k, device=device)
-        self.e_buffer = torch.zeros(capacity, d_v, device=device)
+        self.dtype = dtype
+        self.k_buffer = torch.zeros(capacity, d_k, device=device, dtype=dtype)
+        self.e_buffer = torch.zeros(capacity, d_v, device=device, dtype=dtype)
         self.ptr = 0
         self.count = 0
 
     def push(self, k: torch.Tensor, e: torch.Tensor):
         """Append a surprise key-error pair to the circular reservoir."""
         # k: (d_k,), e: (d_v,)
-        self.k_buffer[self.ptr] = k.detach()
-        self.e_buffer[self.ptr] = e.detach()
+        self.k_buffer[self.ptr] = k.detach().to(self.dtype)
+        self.e_buffer[self.ptr] = e.detach().to(self.dtype)
         self.ptr = (self.ptr + 1) % self.capacity
         self.count = min(self.count + 1, self.capacity)
 
     def query(self, q: torch.Tensor) -> torch.Tensor:
         """Associative readout from reservoir: q in R^{d_k} -> readout in R^{d_v}."""
         if self.count == 0:
-            return torch.zeros(self.d_v, device=self.device)
+            return torch.zeros(self.d_v, device=self.device, dtype=self.dtype)
         valid_k = self.k_buffer[:self.count]  # (C, d_k)
         valid_e = self.e_buffer[:self.count]  # (C, d_v)
-        scores = torch.matmul(valid_k, q) / math.sqrt(self.d_k)  # (C,)
+        scores = torch.matmul(valid_k, q.to(self.dtype)) / math.sqrt(self.d_k)  # (C,)
         weights = F.softmax(scores, dim=0)  # (C,)
         return torch.matmul(weights, valid_e)  # (d_v,)
 
@@ -68,45 +69,101 @@ class DecoupledDeltaCell(nn.Module):
         self,
         x: torch.Tensor,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
-        """Processes sequence (B, T, d_model) through decoupled delta recurrence."""
+        """Processes sequence (B, T, d_model) through decoupled delta recurrence.
+        
+        Accelerated with in-place fused state updates and batched reservoir processing,
+        eliminating sequential batch loops and redundant inner tensor allocations.
+        """
         b, t, d = x.shape
         device = x.device
+        dtype = x.dtype
 
-        q = self.proj_q(x)  # (B, T, d_k)
+        q = self.proj_q(x)                            # (B, T, d_k)
         k = F.normalize(self.proj_k(x), p=2, dim=-1)  # (B, T, d_k)
-        v = self.proj_v(x)  # (B, T, d_v)
-        beta = torch.sigmoid(self.proj_beta(x))  # (B, T, 1)
+        v = self.proj_v(x)                            # (B, T, d_v)
+        beta = torch.sigmoid(self.proj_beta(x))        # (B, T, 1)
 
-        y_out = torch.zeros(b, t, self.d_v, device=device)
+        y_out = torch.empty(b, t, self.d_v, device=device, dtype=dtype)
         surprises_logged = 0
+        thresh_sq = self.surprise_threshold ** 2
+        scale = 1.0 / math.sqrt(self.d_k)
 
-        for batch_idx in range(b):
-            s_state = torch.zeros(self.d_k, self.d_v, device=device)
-            reservoir = ErrorReservoir(capacity=self.reservoir_capacity, d_k=self.d_k, d_v=self.d_v, device=device)
+        if b == 1:
+            s_state = torch.zeros(self.d_k, self.d_v, device=device, dtype=dtype)
+            reservoir = ErrorReservoir(capacity=self.reservoir_capacity, d_k=self.d_k, d_v=self.d_v, device=device, dtype=dtype)
+            k_buf = reservoir.k_buffer
+            e_buf = reservoir.e_buffer
+            q_0 = q[0]
+            k_0 = k[0]
+            v_0 = v[0]
+            beta_0 = beta[0]
+            ptr = 0
+            count = 0
+            cap = self.reservoir_capacity
 
             for step in range(t):
-                q_t = q[batch_idx, step]  # (d_k,)
-                k_t = k[batch_idx, step]  # (d_k,)
-                v_t = v[batch_idx, step]  # (d_v,)
-                b_t = beta[batch_idx, step]  # (1,)
+                q_t = q_0[step]
+                k_t = k_0[step]
+                v_t = v_0[step]
+                b_t = beta_0[step]
 
-                # 1. Delta error computation: e_t = v_t - S_{t-1} k_t
-                v_pred = torch.matmul(k_t, s_state)  # (d_v,)
+                v_pred = torch.matmul(k_t, s_state)
                 err = v_t - v_pred
-                err_norm = torch.norm(err, p=2).item()
+                s_state.addmm_(k_t.unsqueeze(1), (b_t * err).unsqueeze(0))
+                y_fast = torch.matmul(q_t, s_state)
 
-                # 2. Continuous associative state update
-                s_state = s_state + b_t * torch.outer(k_t, err)
-
-                # 3. Surprise-gated reservoir write
-                if err_norm > self.surprise_threshold:
-                    reservoir.push(k_t, err)
+                err_sq = torch.dot(err, err).item()
+                if err_sq > thresh_sq:
+                    k_buf[ptr] = k_t
+                    e_buf[ptr] = err
+                    ptr = (ptr + 1) % cap
+                    count = min(count + 1, cap)
                     surprises_logged += 1
 
-                # 4. Decoupled dual readout
-                y_fast = torch.matmul(q_t, s_state)  # (d_v,)
-                y_slow = reservoir.query(q_t)        # (d_v,)
-                y_out[batch_idx, step] = y_fast + y_slow
+                if count == 0:
+                    y_out[0, step] = y_fast
+                else:
+                    scores = torch.matmul(k_buf[:count], q_t) * scale
+                    weights = F.softmax(scores, dim=0)
+                    y_slow = torch.matmul(weights, e_buf[:count])
+                    y_out[0, step] = y_fast + y_slow
+        else:
+            s_state = torch.zeros(b, self.d_k, self.d_v, device=device, dtype=dtype)
+            k_buf = torch.zeros(b, self.reservoir_capacity, self.d_k, device=device, dtype=dtype)
+            e_buf = torch.zeros(b, self.reservoir_capacity, self.d_v, device=device, dtype=dtype)
+            valid_mask = torch.zeros(b, self.reservoir_capacity, dtype=torch.bool, device=device)
+            ptr = torch.zeros(b, dtype=torch.long, device=device)
+            batch_indices = torch.arange(b, device=device)
+            cap = self.reservoir_capacity
+
+            for step in range(t):
+                q_t = q[:, step]
+                k_t = k[:, step]
+                v_t = v[:, step]
+                b_t = beta[:, step]
+
+                v_pred = torch.bmm(k_t.unsqueeze(1), s_state).squeeze(1)
+                err = v_t - v_pred
+                s_state.baddbmm_(k_t.unsqueeze(2), (b_t * err).unsqueeze(1))
+                y_fast = torch.bmm(q_t.unsqueeze(1), s_state).squeeze(1)
+
+                err_sq = torch.sum(err * err, dim=-1)
+                is_surprise = err_sq > thresh_sq
+                surprises_logged += int(is_surprise.sum().item())
+
+                curr_ptr = ptr
+                k_buf[batch_indices, curr_ptr] = torch.where(is_surprise.unsqueeze(-1), k_t, k_buf[batch_indices, curr_ptr])
+                e_buf[batch_indices, curr_ptr] = torch.where(is_surprise.unsqueeze(-1), err, e_buf[batch_indices, curr_ptr])
+                valid_mask[batch_indices, curr_ptr] = is_surprise | valid_mask[batch_indices, curr_ptr]
+                ptr = (curr_ptr + is_surprise.long()) % cap
+
+                scores = torch.bmm(k_buf, q_t.unsqueeze(-1)).squeeze(-1) * scale
+                scores = scores.masked_fill(~valid_mask, -1e4)
+                weights = F.softmax(scores, dim=-1)
+                y_slow = torch.bmm(weights.unsqueeze(1), e_buf).squeeze(1)
+                has_valid = valid_mask.any(dim=-1, keepdim=True)
+                y_slow = torch.where(has_valid, y_slow, torch.zeros_like(y_slow))
+                y_out[:, step] = y_fast + y_slow
 
         out = self.out_proj(y_out)
         telemetry = {
