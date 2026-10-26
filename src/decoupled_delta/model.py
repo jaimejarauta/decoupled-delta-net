@@ -112,7 +112,7 @@ class DecoupledDeltaCell(nn.Module):
                 s_state.addmm_(k_t.unsqueeze(1), (b_t * err).unsqueeze(0))
                 y_fast = torch.matmul(q_t, s_state)
 
-                err_sq = torch.dot(err, err).item()
+                err_sq = torch.dot(err, err).item() / self.d_v
                 if err_sq > thresh_sq:
                     k_buf[ptr] = k_t
                     e_buf[ptr] = err
@@ -147,7 +147,7 @@ class DecoupledDeltaCell(nn.Module):
                 s_state.baddbmm_(k_t.unsqueeze(2), (b_t * err).unsqueeze(1))
                 y_fast = torch.bmm(q_t.unsqueeze(1), s_state).squeeze(1)
 
-                err_sq = torch.sum(err * err, dim=-1)
+                err_sq = torch.mean(err * err, dim=-1)
                 is_surprise = err_sq > thresh_sq
                 surprises_logged += int(is_surprise.sum().item())
 
