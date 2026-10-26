@@ -40,3 +40,8 @@ DeltaNet (reservoir disabled) at equal size, data and steps? Rule: margin >= +5 
 Decision: FAIL (+1.2 pts). Training shrinks errors, so an absolute threshold stops firing and the reservoir is
 unused. Next arm: threshold relative to a running mean of err^2 (`relative=True`).
 Manifest: results/mqar_train_absolute_manifest.json.
+| Decoupled, relative threshold 1.5 | 30.7% | 10.9% |
+
+Decision (relative arm): FAIL (-0.5 pts). The reservoir is now used (~11% of tokens) and still adds nothing at
+T=128, K=8. Remaining test: the Zoology sweep at longer T and larger K with a DeltaNet+SWA control (Colab run 5).
+Manifest: results/mqar_train_relative_manifest.json.
