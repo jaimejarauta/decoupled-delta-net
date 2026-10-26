@@ -83,10 +83,10 @@ def main():
                 input_ids = batch["input_ids"].to(device)
 
                 # Warmup
-                _ = model.forward_recurrent(input_ids[:, :64])
+                _ = model(input_ids[:, :64])
 
                 t0 = time.perf_counter()
-                logits, states, telemetries = model.forward_recurrent(input_ids)
+                logits, telemetry = model(input_ids)
                 if device.type == "cuda":
                     torch.cuda.synchronize()
                 elapsed = time.perf_counter() - t0
@@ -95,8 +95,7 @@ def main():
                 throughput = total_tokens / max(1e-6, elapsed)
                 latency_ms = (elapsed / total_tokens) * 1000.0
 
-                surprise_triggers = sum(t.get("surprise_trigger", 0.0) for t in telemetries)
-                surprise_rate = (surprise_triggers / max(1, len(telemetries))) * 100.0
+                surprise_rate = telemetry.get("surprise_rate", 0.0) * 100.0
                 status = "PASSED" if throughput >= 150.0 and latency_ms <= 10.0 else "FAILED"
 
                 print(f"{seq_len:<12,d} | {num_pairs:<10d} | {throughput:<18.1f} | {latency_ms:<16.3f} | {surprise_rate:<13.1f}% | {status}")
