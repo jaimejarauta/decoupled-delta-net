@@ -88,7 +88,7 @@ class DecoupledDeltaCell(nn.Module):
         thresh_sq = self.surprise_threshold ** 2
         scale = 1.0 / math.sqrt(self.d_k)
 
-        if b == 1:
+        if b == 1 and not torch.is_grad_enabled():
             s_state = torch.zeros(self.d_k, self.d_v, device=device, dtype=dtype)
             reservoir = ErrorReservoir(capacity=self.reservoir_capacity, d_k=self.d_k, d_v=self.d_v, device=device, dtype=dtype)
             k_buf = reservoir.k_buffer
@@ -135,6 +135,7 @@ class DecoupledDeltaCell(nn.Module):
             ptr = torch.zeros(b, dtype=torch.long, device=device)
             batch_indices = torch.arange(b, device=device)
             cap = self.reservoir_capacity
+            y_steps = []
 
             for step in range(t):
                 q_t = q[:, step]
@@ -144,7 +145,10 @@ class DecoupledDeltaCell(nn.Module):
 
                 v_pred = torch.bmm(k_t.unsqueeze(1), s_state).squeeze(1)
                 err = v_t - v_pred
-                s_state.baddbmm_(k_t.unsqueeze(2), (b_t * err).unsqueeze(1))
+                if torch.is_grad_enabled():
+                    s_state = torch.baddbmm(s_state, k_t.unsqueeze(2), (b_t * err).unsqueeze(1))
+                else:
+                    s_state.baddbmm_(k_t.unsqueeze(2), (b_t * err).unsqueeze(1))
                 y_fast = torch.bmm(q_t.unsqueeze(1), s_state).squeeze(1)
 
                 err_sq = torch.mean(err * err, dim=-1)
@@ -152,9 +156,16 @@ class DecoupledDeltaCell(nn.Module):
                 surprises_logged += int(is_surprise.sum().item())
 
                 curr_ptr = ptr
-                k_buf[batch_indices, curr_ptr] = torch.where(is_surprise.unsqueeze(-1), k_t, k_buf[batch_indices, curr_ptr])
-                e_buf[batch_indices, curr_ptr] = torch.where(is_surprise.unsqueeze(-1), err, e_buf[batch_indices, curr_ptr])
-                valid_mask[batch_indices, curr_ptr] = is_surprise | valid_mask[batch_indices, curr_ptr]
+                if torch.is_grad_enabled():
+                    ptr_mask = (torch.arange(cap, device=device).unsqueeze(0) == curr_ptr.unsqueeze(1)).unsqueeze(-1)
+                    update_mask = ptr_mask & is_surprise.unsqueeze(1).unsqueeze(2)
+                    k_buf = torch.where(update_mask, k_t.unsqueeze(1), k_buf)
+                    e_buf = torch.where(update_mask, err.unsqueeze(1), e_buf)
+                    valid_mask = torch.where(ptr_mask.squeeze(-1) & is_surprise.unsqueeze(1), True, valid_mask)
+                else:
+                    k_buf[batch_indices, curr_ptr] = torch.where(is_surprise.unsqueeze(-1), k_t, k_buf[batch_indices, curr_ptr])
+                    e_buf[batch_indices, curr_ptr] = torch.where(is_surprise.unsqueeze(-1), err, e_buf[batch_indices, curr_ptr])
+                    valid_mask[batch_indices, curr_ptr] = is_surprise | valid_mask[batch_indices, curr_ptr]
                 ptr = (curr_ptr + is_surprise.long()) % cap
 
                 scores = torch.bmm(k_buf, q_t.unsqueeze(-1)).squeeze(-1) * scale
@@ -163,7 +174,9 @@ class DecoupledDeltaCell(nn.Module):
                 y_slow = torch.bmm(weights.unsqueeze(1), e_buf).squeeze(1)
                 has_valid = valid_mask.any(dim=-1, keepdim=True)
                 y_slow = torch.where(has_valid, y_slow, torch.zeros_like(y_slow))
-                y_out[:, step] = y_fast + y_slow
+                y_steps.append(y_fast + y_slow)
+
+            y_out = torch.stack(y_steps, dim=1)
 
         out = self.out_proj(y_out)
         telemetry = {
