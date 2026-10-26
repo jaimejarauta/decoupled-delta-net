@@ -95,7 +95,7 @@ def main():
                 throughput = total_tokens / max(1e-6, elapsed)
                 latency_ms = (elapsed / total_tokens) * 1000.0
 
-                surprise_rate = telemetry.get("surprise_rate", 0.0) * 100.0
+                surprise_rate = telemetry.get("layer_0_surprise_rate", 0.0) * 100.0
                 status = "PASSED" if throughput >= 150.0 and latency_ms <= 10.0 else "FAILED"
 
                 print(f"{seq_len:<12,d} | {num_pairs:<10d} | {throughput:<18.1f} | {latency_ms:<16.3f} | {surprise_rate:<13.1f}% | {status}")

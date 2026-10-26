@@ -25,3 +25,18 @@ We split sequence memory into:
 4. Readout:
    $$y_t = q_t S_t + \sum_{m \in R_t} \text{softmax}\left(\frac{q_t k_m^\top}{\sqrt{d_k}}\right) e_m$$
 
+
+## Run log 2026-10-26: first trained runs (MQAR)
+
+Generator rewritten to the Zoology layout: K unique keys, values from a disjoint range, every key queried once,
+loss and recall over all query positions. Question: does the surprise reservoir raise held-out recall over plain
+DeltaNet (reservoir disabled) at equal size, data and steps? Rule: margin >= +5 points.
+
+| Arm (T=128, K=8, V=128, d=64, 2 layers, 1500 x 32, seed 0, CPU) | Recall | Surprise rate |
+|---|---|---|
+| DeltaNet (no reservoir) | 31.2% | 0% |
+| Decoupled, absolute threshold 0.5 | 32.4% | 0.1-0.2% |
+
+Decision: FAIL (+1.2 pts). Training shrinks errors, so an absolute threshold stops firing and the reservoir is
+unused. Next arm: threshold relative to a running mean of err^2 (`relative=True`).
+Manifest: results/mqar_train_absolute_manifest.json.

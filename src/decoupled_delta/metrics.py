@@ -5,12 +5,11 @@ from typing import Dict
 import torch
 
 
-def compute_mqar_accuracy(logits: torch.Tensor, target_val: torch.Tensor) -> float:
-    """Computes associative recall top-1 accuracy at query position."""
-    # logits: (B, T, vocab_size), target_val: (B,)
-    preds = torch.argmax(logits[:, -1, :], dim=-1)
-    correct = (preds == target_val).float().sum().item()
-    return float(correct / len(target_val))
+def compute_mqar_accuracy(logits: torch.Tensor, labels: torch.Tensor) -> float:
+    """Top-1 recall over all query positions. labels: (B, T) with -100 off-query."""
+    mask = labels != -100
+    preds = torch.argmax(logits, dim=-1)
+    return float((preds[mask] == labels[mask]).float().mean().item())
 
 
 def benchmark_associative_throughput(
