@@ -19,7 +19,29 @@ def main():
     parser.add_argument("--config", type=str, default="configs/smoke_test.yaml")
     parser.add_argument("--seq-len", type=int, default=None)
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--wandb", action="store_true", help="Enable Weights & Biases logging")
+    parser.add_argument("--wandb-project", type=str, default="moonshot-decoupled-delta", help="W&B project")
+    parser.add_argument("--wandb-name", type=str, default=None, help="W&B run display name")
+    parser.add_argument("--wandb-mode", type=str, default="online", choices=["online", "offline", "disabled"])
     args = parser.parse_args()
+
+    use_wandb = args.wandb or os.environ.get("WANDB_MODE") in ["online", "offline"]
+    wandb_run = None
+    if use_wandb:
+        try:
+            import wandb
+            entity = os.environ.get("WANDB_ENTITY", "research-projekts")
+            wandb_run = wandb.init(
+                project=args.wandb_project,
+                entity=entity,
+                name=args.wandb_name or f"decoupled-delta-smoke-{int(time.time())}",
+                mode=args.wandb_mode if not args.wandb else "online",
+                config={"seq_len": args.seq_len, "config": cfg if 'cfg' in locals() else None},
+            )
+            print(f"[W&B] Initialized run '{wandb_run.name}' in project '{args.wandb_project}' (mode: {wandb_run.mode})")
+        except Exception as e:
+            print(f"[W&B Warning] Init skipped ({e}). Continuing locally.")
+            use_wandb = False
 
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
@@ -102,6 +124,21 @@ def main():
     with open("results/smoke_manifest.json", "w") as f:
         json.dump(manifest, f, indent=2)
     print("Saved results to results/smoke_manifest.json")
+
+    if use_wandb and wandb_run:
+        wandb.summary["throughput_tok_s"] = tok_per_sec
+        wandb.summary["ms_per_token"] = ms_per_tok
+        wandb.summary["surprise_rate"] = telem.get("layer_0_surprise_rate", 0.0)
+        wandb.summary["gate_passed"] = gate_passed
+        wandb.summary["seq_len"] = seq_len
+        wandb.log({
+            "throughput_tok_s": tok_per_sec,
+            "ms_per_token": ms_per_tok,
+            "surprise_rate": telem.get("layer_0_surprise_rate", 0.0),
+            "gate_passed": int(gate_passed),
+        })
+        wandb.finish()
+        print("[W&B] Run successfully finished and synced.")
 
     return 0 if gate_passed else 1
 
