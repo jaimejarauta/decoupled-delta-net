@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hybrid-locality"
+version = "0.1.0"
+description = "Do the linear layers in hybrid LMs use long context? Windowed-state interventions."
+authors = [{ name = "Jaime Jarauta", email = "jaime.jarauta@gmail.com" }]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["torch>=2.4", "transformers>=5.0", "datasets>=3.0"]
+
+[project.optional-dependencies]
+fast = ["flash-linear-attention", "causal-conv1d", "mamba-ssm"]
+dev = ["pytest>=8.0.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
