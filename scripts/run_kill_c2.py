@@ -37,12 +37,12 @@ def _generate_one(model, tok, prompt: str, max_new_tokens: int, temperature: flo
     enc = tok(prompt, return_tensors="pt").to(device)
     in_len = enc.input_ids.shape[1]
     torch.manual_seed(seed)
+    gen_kwargs = {"do_sample": True, "temperature": temperature} if temperature > 1e-5 else {"do_sample": False}
     out = model.generate(
         **enc,
         max_new_tokens=max_new_tokens,
-        do_sample=(temperature > 1e-5),
-        temperature=max(temperature, 1e-5),
         pad_token_id=tok.eos_token_id,
+        **gen_kwargs,
     )
     gen_ids = out[0, in_len:]
     return tok.decode(gen_ids, skip_special_tokens=True), int(in_len + gen_ids.shape[0])
@@ -206,6 +206,8 @@ def cmd_eval(args) -> None:
                 f.write(json.dumps(res) + "\n")
             f.write(json.dumps(evaluate_majority2(model, tok, idx, q, gt, seed=idx)) + "\n")
             f.flush()
+            if (idx + 1) % 5 == 0 or idx == 0 or (idx + 1) == len(ds):
+                print(f"  [MATH-500 Item {idx+1}/{len(ds)}] Finished evaluating all 4 arms.")
 
 
 def cmd_report(args) -> None:
