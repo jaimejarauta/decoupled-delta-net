@@ -1,34 +1,29 @@
-# Decoupled Delta-Net
+# hybrid-state-rollback
 
-Sub-quadratic linear recurrence with a discrete, surprise-triggered error reservoir for long-context sequence modeling.
+Kill experiment and core library for **Top Pick C1** in `research/RESEARCH_DECISION_2026-10-26.md`:
+*Same-Subspace State Overwrite and Synchronized State-KV Rollback in Hybrid Recurrent Reasoning Models*.
 
-## Overview
+## Motivation & Live `transformers >= 5.0` Gap
+In HuggingFace `transformers >= 5.0`, hybrid `DynamicCache` marks every `LinearAttentionLayer` and `LinearAttentionAndFullAttentionLayer` (`Qwen3.5`, `Falcon-H1`, `Zamba2`, `Granite-4.0-H`, `Bamba`) as `is_croppable = False` whenever `recurrent_states` are initialized. Naive KV-cache truncation (`SkipKV`, `R-KV`, `FoldGRPO`) crops `DynamicLayer` attention keys/values while leaving recurrent states $S_b$ polluted by dead-end tokens, causing cross-layer State-KV desynchronization.
 
-Linear recurrent architectures (such as Mamba-2, DeltaNet, and RWKV-7) struggle with Multi-Query Associative Recall (MQAR) and needle-in-a-haystack tasks because continuous low-rank state updates continually overwrite older key-value associations during stretches of predictable tokens.
+## Experimental Arms (Strict Total-Token / FLOPs Accounting)
+| Arm | Recurrent State | Attention KV | Prefix `[0, t_a)` | Purpose |
+|---|---|---|---|---|
+| `clean` | $S_a$ (unpolluted) | $\text{KV}_a$ | Kept | Upper-bound reference ($L=0$) |
+| `unrolled` | $S_b$ (polluted) | $\text{KV}_b$ | Kept | Standard uninterrupted CoT |
+| `attn_kv_only` | $S_b$ (polluted) | Cropped to $\text{KV}_a$ | Kept | Tests cross-layer State-KV desynchronization |
+| `prompt_restart` | Reset to $0$ | Reset to $\emptyset$ | Discarded (re-prefill prompt + lemma) | Dumbest strong baseline #1 |
+| `full_replay` | Recomputed $0 \to t_a$ | Recomputed $0 \to t_a$ | Re-prefilled ($C=0$) | Dumbest strong baseline #2 |
+| `ring_fifo` | Restored if in last $C$ steps | Cropped + replayed | Replayed from FIFO hit or $0$ | `ReplaySSM`-style sliding window baseline |
+| `sync_binomial` | Restored from $C$-slot online pool + short chunk replay | Synchronously cropped + replayed | Preserved | Proposed method |
 
-Decoupled Delta-Net decouples memory updates into two complementary mechanisms:
-1. **Continuous Delta Fast Path:** Online gradient descent on predictable sequence dynamics:
-   $$S_t = S_{t-1} + \beta_t (v_t - S_{t-1} k_t) k_t^\top$$
-2. **Surprise-Gated Error Reservoir:** A discrete circular buffer that captures prediction residuals only when surprise exceeds threshold:
-   $$\|v_t - S_{t-1} k_t\|_2 > \tau$$
-
-This yields exact factual retrieval without the $O(N^2)$ quadratic memory wall of standard multi-head attention.
-
-## Pre-Registered Gate Criteria
-- **Gate 1 (Smoke / Throughput):** Streaming throughput $\ge 150\text{ tok/s}$, per-token latency $\le 10.0\text{ ms}$, and surprise trigger rate $\le 35\%$.
-- **Gate 2 (Stage 2 MQAR):** Multi-query associative recall accuracy $\ge 90\%$ at context length $T = 32\text{k}$ tokens.
+Every arm logs `total_tokens_processed = initial_prefill + dead_end_tokens + replay_tokens + lemma_tokens + decode_tokens`.
 
 ## Quickstart
-
-### Local (Apple Silicon / CPU):
 ```bash
-# Run smoke benchmark
-python scripts/run_smoke.py --config configs/smoke_test.yaml
+pytest -q   # CPU exactness tests across Qwen3.5, Falcon-H1, Zamba2, Granite-4.0-H
+python scripts/run_kill_c1.py run --model Qwen/Qwen3.5-0.8B --dataset gsm8k --n 100
+python scripts/run_kill_c1.py run --model tiiuae/Falcon-H1R-7B --dataset math500 --n 100
+python scripts/run_kill_c1.py report
 ```
-
-### Google Colab:
-Open `notebooks/colab_runner_decoupled_delta.ipynb` in Colab. Includes automatic machine teardown (`runtime.unassign()`) to protect compute credits upon completion.
-
-## License
-MIT
 
