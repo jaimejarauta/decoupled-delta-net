@@ -3,25 +3,22 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "decoupled-delta-net"
+name = "hybrid-kv-cliff"
 version = "0.1.0"
-description = "Sub-quadratic linear recurrence with surprise-triggered error reservoir"
+description = "The Depth-Redundancy Cliff: KV-Cache Token Eviction vs. Asymmetric Low-Bit Quantization in Sparse-Attention Hybrid LLMs."
 authors = [{ name = "Jaime Jarauta", email = "jaime.jarauta@gmail.com" }]
 license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = [
-    "torch>=2.2.0",
-    "numpy>=1.24.0",
-    "pyyaml>=6.0",
-]
+dependencies = ["torch>=2.4", "transformers>=5.0", "datasets>=3.0"]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "wandb>=0.16.0",
-]
+fast = ["flash-linear-attention", "causal-conv1d", "mamba-ssm", "accelerate"]
+dev = ["pytest>=8.0.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "scripts"]
 

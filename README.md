@@ -1,34 +1,23 @@
-# Decoupled Delta-Net
+# `hybrid-kv-cliff`: KV-Cache Token Eviction vs. Quantization in Sparse-Attention Hybrid LLMs
 
-Sub-quadratic linear recurrence with a discrete, surprise-triggered error reservoir for long-context sequence modeling.
+Empirical evaluation testing the **Depth-Redundancy Cliff** across production hybrid SSM/Linear-Attention + Full-Attention language models (`ibm-granite/granite-4.0-h-1b` with 4/40 attention layers, `Qwen/Qwen3.5-0.8B/2B/4B-Base` with 6–8 attention layers, `tiiuae/Falcon-H1-1.5B-Base` parallel Mamba-2 + Attention) against matched pure-Transformer controls (`Qwen/Qwen3-1.7B-Base`, `Qwen/Qwen3-4B-Base`).
 
-## Overview
+## Core Falsifiable Claim
+In pure Transformers ($M = 28\text{--}36$ full-attention layers), cross-layer head redundancy absorbs single-layer KV token eviction misses (`SnapKV`, `PyramidKV`). In sparse-attention hybrids ($M \in \{4, 6, 8\}$), each full-attention layer acts as a non-redundant retrieval bottleneck: byte-matched token eviction ($4\times\text{--}8\times$) triggers a steep accuracy cliff—especially under multi-turn query shift—whereas retaining 100% of token positions via asymmetric per-channel Key / per-token Value quantization (`KIVI`) preserves exact retrieval within $\le 2.5$ pts of uncompressed BF16.
 
-Linear recurrent architectures (such as Mamba-2, DeltaNet, and RWKV-7) struggle with Multi-Query Associative Recall (MQAR) and needle-in-a-haystack tasks because continuous low-rank state updates continually overwrite older key-value associations during stretches of predictable tokens.
-
-Decoupled Delta-Net decouples memory updates into two complementary mechanisms:
-1. **Continuous Delta Fast Path:** Online gradient descent on predictable sequence dynamics:
-   $$S_t = S_{t-1} + \beta_t (v_t - S_{t-1} k_t) k_t^\top$$
-2. **Surprise-Gated Error Reservoir:** A discrete circular buffer that captures prediction residuals only when surprise exceeds threshold:
-   $$\|v_t - S_{t-1} k_t\|_2 > \tau$$
-
-This yields exact factual retrieval without the $O(N^2)$ quadratic memory wall of standard multi-head attention.
-
-## Pre-Registered Gate Criteria
-- **Gate 1 (Smoke / Throughput):** Streaming throughput $\ge 150\text{ tok/s}$, per-token latency $\le 10.0\text{ ms}$, and surprise trigger rate $\le 35\%$.
-- **Gate 2 (Stage 2 MQAR):** Multi-query associative recall accuracy $\ge 90\%$ at context length $T = 32\text{k}$ tokens.
+## Compression Arms (Exact Physical Byte Accounting)
+1. `full`: Uncompressed BF16/FP16 KV cache + untouched linear recurrent states (`1.0x`).
+2. `snapkv_4x` / `snapkv_8x`: FlashAttention-compatible $O(W_{\text{obs}} \cdot L)$ observation-window salience (`W_obs=64`, kernel-5 1D pooling, 4 sinks, 64 local tail).
+3. `snapkv_ungrouped_4x`: Per-query-head selection oracle isolating GQA group width ($G \in \{4, 8\}$) from attention depth ($M \in \{4, 6, 8\}$).
+4. `pyramidkv_4x`: Linearly funneled $1.5\bar{B} \to 0.5\bar{B}$ layerwise budget across the $M$ full-attention layers.
+5. `kvzip_uniform_4x`: Query-agnostic probe + $\|v_j\|_2$-weighted salience robust against single-query overfitting.
+6. `kivi_4bit` (~`3.6x` physical bytes) & `kivi_2bit` (~`6.4x` physical bytes): Zero token eviction; group-32 per-channel Key + per-token Value asymmetric quantization + 4 sinks + 32 BF16 residual tail.
+7. `sink_tail_4x`: `StreamingLLM` naive eviction floor (4 sinks + recent tail).
 
 ## Quickstart
-
-### Local (Apple Silicon / CPU):
 ```bash
-# Run smoke benchmark
-python scripts/run_smoke.py --config configs/smoke_test.yaml
+pytest -q
+python scripts/run_kill.py run --models Qwen/Qwen3-1.7B-Base Qwen/Qwen3.5-2B-Base ibm-granite/granite-4.0-h-1b --length 8192 --n 50
+python scripts/run_kill.py report --out results/kill.jsonl
 ```
-
-### Google Colab:
-Open `notebooks/colab_runner_decoupled_delta.ipynb` in Colab. Includes automatic machine teardown (`runtime.unassign()`) to protect compute credits upon completion.
-
-## License
-MIT
 
