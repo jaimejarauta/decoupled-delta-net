@@ -3,25 +3,21 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "decoupled-delta-net"
+name = "zero-state-vlm-cache"
 version = "0.1.0"
-description = "Sub-quadratic linear recurrence with surprise-triggered error reservoir"
+description = "State-Free Modular Image Caching in Hybrid Vision-Language Models (Qwen3.5)."
 authors = [{ name = "Jaime Jarauta", email = "jaime.jarauta@gmail.com" }]
 license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = [
-    "torch>=2.2.0",
-    "numpy>=1.24.0",
-    "pyyaml>=6.0",
-]
+dependencies = ["torch>=2.4", "transformers>=5.0", "datasets>=3.0", "pillow>=10.0"]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "wandb>=0.16.0",
-]
+fast = ["flash-linear-attention", "causal-conv1d", "accelerate"]
+dev = ["pytest>=8.0.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.pytest.ini_options]
+pythonpath = ["src", "scripts"]

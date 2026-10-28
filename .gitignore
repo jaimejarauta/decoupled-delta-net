@@ -1,23 +1,6 @@
-# Byte-compiled / optimized files
 __pycache__/
-*.py[cod]
-*$py.class
-
-# Environments
-.venv/
-env/
-venv/
-
-# Testing & Coverage
+*.egg-info/
 .pytest_cache/
-.coverage
-htmlcov/
-
-# Local data & outputs
-data/
-*.pt
-*.bin
-*.tar.gz
-wandb/
-.env
+results/
+.venv/
 
