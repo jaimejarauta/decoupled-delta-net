@@ -143,64 +143,9 @@ def evaluate_fev_task(
         else:
             sel_indices = list(range(n_total_series))
 
-        # 1. Native Multivariate Chronos-2 Group Attention (via fev. convert_input_data or DataFrame)
-        try:
-            cov_past_df, cov_fut_df = fev.convert_input_data(window, adapter="pandas", as_univariate=False)
-            if n_total_series > max_series_per_window:
-                keep_ids = {str(past_ds[i][id_col]) for i in range(len(past_ds))}
-                cov_past_df = cov_past_df[cov_past_df[id_col].astype(str).isin(keep_ids)].reset_index(drop=True)
-                cov_fut_df = cov_fut_df[cov_fut_df[id_col].astype(str).isin(keep_ids)].reset_index(drop=True)
-        except Exception:
-            if hasattr(past_ds, "to_pandas"):
-                cov_past_df = past_ds.to_pandas()
-                cov_fut_df = fut_ds.to_pandas()
-            elif isinstance(past_ds, pd.DataFrame):
-                cov_past_df = past_ds.copy()
-                cov_fut_df = fut_ds.copy()
-            else:
-                cov_past_df = pd.DataFrame(past_ds)
-                cov_fut_df = pd.DataFrame(fut_ds)
-
-        # Clamp ultra-long context per series to `max_context_len` for uniform GPU memory on L4/T4
-        cov_past_df = cov_past_df.groupby(id_col, sort=False).tail(max_context_len).reset_index(drop=True)
-        keep_cov_cols = [c for c in cov_cols if c in cov_past_df.columns and c in cov_fut_df.columns]
-
-        # Strictly cast target and covariates to numeric float64 (handles object/string dtypes in fev parquet datasets)
-        cov_past_df[target_col] = (
-            pd.to_numeric(cov_past_df[target_col], errors="coerce")
-            .interpolate(method="linear")
-            .bfill()
-            .ffill()
-            .fillna(0.0)
-            .astype(np.float64)
-        )
-        if target_col in cov_fut_df.columns:
-            cov_fut_df[target_col] = (
-                pd.to_numeric(cov_fut_df[target_col], errors="coerce")
-                .interpolate(method="linear")
-                .bfill()
-                .ffill()
-                .fillna(0.0)
-                .astype(np.float64)
-            )
-        for c in keep_cov_cols:
-            cov_past_df[c] = pd.to_numeric(cov_past_df[c], errors="coerce").fillna(0.0).astype(np.float64)
-            cov_fut_df[c] = pd.to_numeric(cov_fut_df[c], errors="coerce").fillna(0.0).astype(np.float64)
-
-        t0 = _cuda_sync_time()
-        mv_pred_df = pipeline.predict_df(
-            cov_past_df[[id_col, ts_col, target_col] + keep_cov_cols],
-            future_df=cov_fut_df[[id_col, ts_col] + keep_cov_cols],
-            prediction_length=horizon,
-            quantile_levels=list(QUANTILE_LEVELS),
-            id_column=id_col,
-            timestamp_column=ts_col,
-            target=target_col,
-        )
-        mv_wall_s = _cuda_sync_time() - t0
-        mv_map = _unpack_chronos_quantiles(mv_pred_df, id_col=id_col, quantiles=QUANTILE_LEVELS)
-
-        # 2. Build ONE batched Univariate DataFrame containing test contexts + all pre-cutoff rolling sub-origins!
+        # Build clean long-format DataFrames for Multivariate Chronos-2 and Univariate Causal Heads
+        cov_past_frames = []
+        cov_fut_frames = []
         uni_frames = []
         series_meta: list[dict[str, Any]] = []
 
@@ -208,7 +153,11 @@ def evaluate_fev_task(
             p_row = past_ds[s_i]
             f_row = fut_ds[s_i]
             raw_id = str(p_row[id_col])
-            y_full = np.asarray(p_row[target_col], dtype=np.float64)
+            y_raw = p_row[target_col]
+            y_full = np.asarray(
+                pd.to_numeric(pd.Series(y_raw), errors="coerce").interpolate().bfill().ffill().fillna(0.0),
+                dtype=np.float64,
+            )
             ts_full = list(p_row[ts_col])
             if len(y_full) > max_context_len:
                 y_past = y_full[-max_context_len:]
@@ -219,7 +168,36 @@ def evaluate_fev_task(
                 ts_past = ts_full
                 p_row_clamped = p_row
 
+            # Extract numeric covariates [T_past, D] and [H, D]
             x_past, x_fut = _extract_numeric_covariates(p_row_clamped, f_row, cov_cols, len(y_past), horizon)
+
+            # Extract future timestamps (strictly len == horizon)
+            ts_fut_raw = list(f_row[ts_col])
+            if len(ts_fut_raw) >= horizon:
+                ts_fut = ts_fut_raw[:horizon]
+            elif len(ts_fut_raw) > 1:
+                try:
+                    step = ts_fut_raw[1] - ts_fut_raw[0]
+                    last_t = ts_fut_raw[-1]
+                    ts_fut = ts_fut_raw + [last_t + step * (k + 1) for k in range(horizon - len(ts_fut_raw))]
+                except Exception:
+                    ts_fut = list(range(horizon))
+            else:
+                ts_fut = list(range(horizon))
+
+            # 1. Past multivariate frame
+            p_dict = {id_col: raw_id, ts_col: ts_past, target_col: y_past}
+            for c_i, c_name in enumerate(cov_cols):
+                p_dict[c_name] = x_past[:, c_i]
+            cov_past_frames.append(pd.DataFrame(p_dict))
+
+            # 2. Future covariate frame (strictly horizon rows)
+            f_dict = {id_col: raw_id, ts_col: ts_fut}
+            for c_i, c_name in enumerate(cov_cols):
+                f_dict[c_name] = x_fut[:, c_i]
+            cov_fut_frames.append(pd.DataFrame(f_dict))
+
+            # 3. Univariate folds for Causal Residual Heads
             rho_w = compute_covariate_shock_ratio(x_past, x_fut)
             folds = generate_rolling_origin_folds(
                 t_cutoff=len(y_past),
@@ -247,6 +225,22 @@ def evaluate_fev_task(
                     "folds": folds,
                 }
             )
+
+        cov_past_df = pd.concat(cov_past_frames, ignore_index=True)
+        cov_fut_df = pd.concat(cov_fut_frames, ignore_index=True)
+
+        t0 = _cuda_sync_time()
+        mv_pred_df = pipeline.predict_df(
+            cov_past_df[[id_col, ts_col, target_col] + cov_cols],
+            future_df=(cov_fut_df[[id_col, ts_col] + cov_cols] if cov_cols else None),
+            prediction_length=horizon,
+            quantile_levels=list(QUANTILE_LEVELS),
+            id_column=id_col,
+            timestamp_column=ts_col,
+            target=target_col,
+        )
+        mv_wall_s = _cuda_sync_time() - t0
+        mv_map = _unpack_chronos_quantiles(mv_pred_df, id_col=id_col, quantiles=QUANTILE_LEVELS)
 
         batched_uni_df = pd.concat(uni_frames, ignore_index=True)
         batched_uni_df[target_col] = (
