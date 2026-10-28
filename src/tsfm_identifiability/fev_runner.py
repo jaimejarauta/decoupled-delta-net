@@ -165,6 +165,28 @@ def evaluate_fev_task(
         cov_past_df = cov_past_df.groupby(id_col, sort=False).tail(max_context_len).reset_index(drop=True)
         keep_cov_cols = [c for c in cov_cols if c in cov_past_df.columns and c in cov_fut_df.columns]
 
+        # Strictly cast target and covariates to numeric float64 (handles object/string dtypes in fev parquet datasets)
+        cov_past_df[target_col] = (
+            pd.to_numeric(cov_past_df[target_col], errors="coerce")
+            .interpolate(method="linear")
+            .bfill()
+            .ffill()
+            .fillna(0.0)
+            .astype(np.float64)
+        )
+        if target_col in cov_fut_df.columns:
+            cov_fut_df[target_col] = (
+                pd.to_numeric(cov_fut_df[target_col], errors="coerce")
+                .interpolate(method="linear")
+                .bfill()
+                .ffill()
+                .fillna(0.0)
+                .astype(np.float64)
+            )
+        for c in keep_cov_cols:
+            cov_past_df[c] = pd.to_numeric(cov_past_df[c], errors="coerce").fillna(0.0).astype(np.float64)
+            cov_fut_df[c] = pd.to_numeric(cov_fut_df[c], errors="coerce").fillna(0.0).astype(np.float64)
+
         t0 = _cuda_sync_time()
         mv_pred_df = pipeline.predict_df(
             cov_past_df[[id_col, ts_col, target_col] + keep_cov_cols],
@@ -227,6 +249,14 @@ def evaluate_fev_task(
             )
 
         batched_uni_df = pd.concat(uni_frames, ignore_index=True)
+        batched_uni_df[target_col] = (
+            pd.to_numeric(batched_uni_df[target_col], errors="coerce")
+            .interpolate(method="linear")
+            .bfill()
+            .ffill()
+            .fillna(0.0)
+            .astype(np.float64)
+        )
         t1 = _cuda_sync_time()
         uni_pred_df = pipeline.predict_df(
             batched_uni_df,
@@ -334,16 +364,28 @@ def evaluate_fev_task(
         else:
             raise AttributeError(f"Cannot extract ground truth from EvaluationWindow: {dir(window)}")
         if n_total_series > max_series_per_window:
-            gt_ds = gt_ds.select(sel_indices)
+            if hasattr(gt_ds, "select"):
+                gt_ds = gt_ds.select(sel_indices)
+            elif hasattr(gt_ds, "iloc"):
+                gt_ds = gt_ds.iloc[sel_indices].reset_index(drop=True)
+            elif isinstance(gt_ds, list):
+                gt_ds = [gt_ds[i] for i in sel_indices]
 
         n_s = max(1, len(series_meta))
         for idx_local, m in enumerate(series_meta):
             rid = m["raw_id"]
             yp = m["y_past"]
-            y_true = np.asarray(gt_ds[idx_local][target_col], dtype=np.float64)
+            if hasattr(gt_ds, "iloc"):
+                gt_row = gt_ds.iloc[idx_local]
+            else:
+                gt_row = gt_ds[idx_local]
+            y_raw = gt_row[target_col]
+            y_true = np.asarray(pd.to_numeric(pd.Series(y_raw), errors="coerce").fillna(0.0), dtype=np.float64)
+            min_h = min(len(y_true), horizon)
+            y_true = y_true[:min_h]
             rho_w = m["rho_w"]
             for arm in ARMS_TSFM:
-                qp = per_series_preds[rid][arm]
+                qp = per_series_preds[rid][arm][:min_h]
                 sql = scaled_quantile_loss(yp, y_true, qp, seasonality=seasonality)
                 mase = mase_score(yp, y_true, qp[:, med_idx], seasonality=seasonality)
                 wall_ms = (
