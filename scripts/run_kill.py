@@ -81,12 +81,28 @@ def run(args: argparse.Namespace) -> None:
                 r = json.loads(line)
                 done_keys.add((r["model"], r["task"], int(r["target_length"]), int(r["idx"]), r["arm"]))
 
+    raw_models = [args.model_single] if args.model_single else args.models
+    models_to_run = []
+    for m in raw_models:
+        if m in ("Qwen/Qwen3-1.7B", "Qwen/Qwen3-1.7B-Base"):
+            models_to_run.append("Qwen/Qwen3-1.7B-Base")
+        elif m in ("Qwen/Qwen3.5-2B", "Qwen/Qwen3.5-2B-Base"):
+            models_to_run.append("Qwen/Qwen3.5-2B-Base")
+        else:
+            models_to_run.append(m)
+
+    lengths_to_run = (
+        args.lengths_list
+        if (args.lengths_list is not None and len(args.lengths_list) > 0)
+        else [args.length]
+    )
+
     manifest = {
         "project": "hybrid-kv-cliff",
-        "models": args.models,
+        "models": models_to_run,
         "tasks": args.tasks,
         "arms": args.arms,
-        "target_length": args.length,
+        "target_lengths": lengths_to_run,
         "n_per_task": args.n,
         "device": device,
         "gpu_name": torch.cuda.get_device_name(0) if device == "cuda" else "cpu",
@@ -96,7 +112,7 @@ def run(args: argparse.Namespace) -> None:
     (out_path.parent / "manifest.json").write_text(json.dumps(manifest, indent=2))
 
     with out_path.open("a") as f:
-        for model_id in args.models:
+        for model_id in models_to_run:
             print(f"\n[hybrid-kv-cliff] Loading {model_id} on {device} ({dtype})...", flush=True)
             model, tok = _load_model_and_tokenizer(model_id, device, dtype)
             arch = get_architecture_stats(model)
@@ -106,84 +122,85 @@ def run(args: argparse.Namespace) -> None:
             t_model_start = time.perf_counter()
             docs_completed = 0
 
-            for task in args.tasks:
-                items = _load_task_items(tok, task, n=args.n, length=args.length, seed=args.seed)
-                print(f"  Task={task}: prepared {len(items)} real items (target_length={args.length})", flush=True)
-                for idx, item in enumerate(items):
-                    missing_arms = [
-                        a for a in args.arms if (model_id, task, args.length, idx, a) not in done_keys
-                    ]
-                    if not missing_arms:
-                        continue
+            for cur_len in lengths_to_run:
+                for task in args.tasks:
+                    items = _load_task_items(tok, task, n=args.n, length=cur_len, seed=args.seed)
+                    print(f"  Task={task}: prepared {len(items)} real items (target_length={cur_len})", flush=True)
+                    for idx, item in enumerate(items):
+                        missing_arms = [
+                            a for a in args.arms if (model_id, task, cur_len, idx, a) not in done_keys
+                        ]
+                        if not missing_arms:
+                            continue
 
-                    doc_ids = item["doc_ids"].to(device)
-                    post_ids = item["post_ids"].to(device)
-                    bundle = prefill_with_salience(model, doc_ids, obs_window=args.obs_window)
+                        doc_ids = item["doc_ids"].to(device)
+                        post_ids = item["post_ids"].to(device)
+                        bundle = prefill_with_salience(model, doc_ids, obs_window=args.obs_window)
 
-                    if not ran_preflight:
-                        c_full = compress_kv_cache(model, bundle, "full")
-                        c_1x = compress_kv_cache(model, bundle, "snapkv_1x")
-                        l_full = forward_post_prefill(model, c_full, post_ids)
-                        l_1x = forward_post_prefill(model, c_1x, post_ids)
-                        diff = float((l_full.float() - l_1x.float()).abs().max().item())
-                        tol = 0.25 if dtype in (torch.bfloat16, torch.float16) else 1e-4
-                        assert diff <= tol, f"Pre-flight 1x equivalence failed on {model_id}: max_diff={diff}"
-                        print(f"  [Pre-Flight PASS] snapkv_1x == full (max_logit_diff={diff:.6f})", flush=True)
-                        ran_preflight = True
+                        if not ran_preflight:
+                            c_full = compress_kv_cache(model, bundle, "full")
+                            c_1x = compress_kv_cache(model, bundle, "snapkv_1x")
+                            l_full = forward_post_prefill(model, c_full, post_ids)
+                            l_1x = forward_post_prefill(model, c_1x, post_ids)
+                            diff = float((l_full.float() - l_1x.float()).abs().max().item())
+                            tol = 0.25 if dtype in (torch.bfloat16, torch.float16) else 1e-4
+                            assert diff <= tol, f"Pre-flight 1x equivalence failed on {model_id}: max_diff={diff}"
+                            print(f"  [Pre-Flight PASS] snapkv_1x == full (max_logit_diff={diff:.6f})", flush=True)
+                            ran_preflight = True
 
-                    for arm in missing_arms:
-                        comp = compress_kv_cache(model, bundle, arm)
-                        gen_ids = greedy_decode_compressed(
-                            model,
-                            comp,
-                            prompt_suffix_ids=post_ids,
-                            initial_last_logits=bundle.last_logits,
-                            max_new_tokens=args.max_new_tokens,
-                        )
-                        pred_text = tok.decode(gen_ids, skip_special_tokens=True)
-                        sc = score_item(item["metric"], pred_text, item["gold"])
-
-                        # Measure synchronized decode tok/s on idx == 0 for hardware Pareto reporting
-                        tok_s = None
-                        if idx == 0:
-                            comp_speed = compress_kv_cache(model, bundle, arm)
-                            dummy_tok = post_ids[:, -1:]
-                            base_pos = comp_speed.doc_len
-                            tok_s = measure_decode_tok_per_s(
-                                lambda step: forward_post_prefill(
-                                    model, comp_speed, dummy_tok, logical_start_pos=base_pos + step
-                                ),
-                                n_steps=16,
-                                device=device,
+                        for arm in missing_arms:
+                            comp = compress_kv_cache(model, bundle, arm)
+                            gen_ids = greedy_decode_compressed(
+                                model,
+                                comp,
+                                prompt_suffix_ids=post_ids,
+                                initial_last_logits=bundle.last_logits,
+                                max_new_tokens=args.max_new_tokens,
                             )
+                            pred_text = tok.decode(gen_ids, skip_special_tokens=True)
+                            sc = score_item(item["metric"], pred_text, item["gold"])
 
-                        row = {
-                            "model": model_id,
-                            "task": task,
-                            "target_length": args.length,
-                            "actual_doc_len": bundle.doc_len,
-                            "idx": idx,
-                            "arm": arm,
-                            "score": float(sc),
-                            "pred": pred_text[:80],
-                            "gold": item["gold"],
-                            "compressed_kv_bytes": comp.compressed_kv_bytes,
-                            "full_kv_bytes": comp.full_kv_bytes,
-                            "effective_kv_ratio": round(comp.effective_kv_ratio, 4),
-                            "decode_tok_s": round(tok_s, 2) if tok_s is not None else None,
-                            **arch,
-                        }
-                        f.write(json.dumps(row) + "\n")
-                        f.flush()
+                            # Measure synchronized decode tok/s on idx == 0 for hardware Pareto reporting
+                            tok_s = None
+                            if idx == 0:
+                                comp_speed = compress_kv_cache(model, bundle, arm)
+                                dummy_tok = post_ids[:, -1:]
+                                base_pos = comp_speed.doc_len
+                                tok_s = measure_decode_tok_per_s(
+                                    lambda step: forward_post_prefill(
+                                        model, comp_speed, dummy_tok, logical_start_pos=base_pos + step
+                                    ),
+                                    n_steps=16,
+                                    device=device,
+                                    )
 
-                    docs_completed += 1
-                    if docs_completed == 10:
-                        elapsed = time.perf_counter() - t_model_start
-                        est_model_h = (elapsed / 10.0) * (len(args.tasks) * args.n) / 3600.0
-                        print(
-                            f"  [Throughput Check @ 10 docs] {elapsed:.1f}s -> Est {est_model_h:.2f} GPU-h for {model_id}",
-                            flush=True,
-                        )
+                            row = {
+                                "model": model_id,
+                                "task": task,
+                                "target_length": cur_len,
+                                "actual_doc_len": bundle.doc_len,
+                                "idx": idx,
+                                "arm": arm,
+                                "score": float(sc),
+                                "pred": pred_text[:80],
+                                "gold": item["gold"],
+                                "compressed_kv_bytes": comp.compressed_kv_bytes,
+                                "full_kv_bytes": comp.full_kv_bytes,
+                                "effective_kv_ratio": round(comp.effective_kv_ratio, 4),
+                                "decode_tok_s": round(tok_s, 2) if tok_s is not None else None,
+                                **arch,
+                            }
+                            f.write(json.dumps(row) + "\n")
+                            f.flush()
+
+                        docs_completed += 1
+                        if docs_completed == 10:
+                            elapsed = time.perf_counter() - t_model_start
+                            est_model_h = (elapsed / 10.0) * (len(args.tasks) * args.n * len(lengths_to_run)) / 3600.0
+                            print(
+                                f"  [Throughput Check @ 10 docs] {elapsed:.1f}s -> Est {est_model_h:.2f} GPU-h for {model_id}",
+                                flush=True,
+                            )
 
             del model
             gc.collect()
@@ -315,6 +332,13 @@ def verdict(summary: dict[str, Any]) -> tuple[str, dict[str, Any]]:
 
 def report(args: argparse.Namespace) -> None:
     out_path = Path(args.out)
+    if not out_path.exists() or out_path.stat().st_size == 0:
+        print(json.dumps({
+            "summary": {},
+            "verdict": "INVALID_PIPELINE",
+            "gate_metrics": {"reason": f"Output file does not exist or is empty: {out_path}"}
+        }, indent=2))
+        return
     rows = [json.loads(line) for line in out_path.read_text().splitlines() if line.strip()]
     summ = summarize(rows)
     decision, details = verdict(summ)
@@ -336,6 +360,7 @@ def main() -> None:
             "tiiuae/Falcon-H1-1.5B-Base",
         ],
     )
+    pr.add_argument("--model", dest="model_single", default=None, help="Single model shortcut")
     pr.add_argument(
         "--tasks",
         nargs="+",
@@ -343,6 +368,7 @@ def main() -> None:
     )
     pr.add_argument("--arms", nargs="+", default=list(ARMS_DEFAULT))
     pr.add_argument("--length", type=int, default=8192)
+    pr.add_argument("--lengths", type=int, nargs="+", dest="lengths_list", default=None, help="Multiple lengths")
     pr.add_argument("--n", type=int, default=50)
     pr.add_argument("--obs-window", type=int, default=64)
     pr.add_argument("--max-new-tokens", type=int, default=16)
