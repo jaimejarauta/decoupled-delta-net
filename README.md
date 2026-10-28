@@ -1,34 +1,23 @@
-# Decoupled Delta-Net
+# `tsfm-scale-identifiability`: Scale-Ratio Non-Identifiability in Universal TSFMs
 
-Sub-quadratic linear recurrence with a discrete, surprise-triggered error reservoir for long-context sequence modeling.
+Formal and empirical audit of **per-variate reversible instance normalization (RevIN)** in covariate-aware Time-Series Foundation Models (`amazon/chronos-2` Group Attention) across all **46 real dynamic-covariate tasks** in [`fev-bench`](https://github.com/autogluon/fev).
 
-## Overview
+## Core Falsifiable Claim
+Independent per-variate lookback standardization $\tilde{y}_t = (y_t - \mu_y)/\sigma_y$ and $\tilde{x}_{j,t} = (x_{j,t} - \mu_{x_j,\text{ctx}})/\sigma_{x_j,\text{ctx}}$ erases the physical cross-variate sensitivity $\beta_j = \partial y_t / \partial x_{j,t} \mapsto \tilde{\beta}_j = \beta_j (\sigma_{x_j,\text{ctx}} / \sigma_y)$. On **Quiescent-to-Active Covariate Shocks** ($\rho_w = \max_j \sigma_{x_j,\text{hor}} / \sigma_{x_j,\text{ctx}} \ge 2.5$), native multivariate TSFM attention suffers severe variance/quantile miscalibration, whereas decoupling **Univariate `Chronos-2` + strictly causal in-context `RidgeCV` / `QuantileLinear` / `LightGBM` residual regression in physical units** matches or beats native Group Attention overall and reduces Scaled Quantile Loss (`SQL`) by $\ge 8\%$ on the shock slice.
 
-Linear recurrent architectures (such as Mamba-2, DeltaNet, and RWKV-7) struggle with Multi-Query Associative Recall (MQAR) and needle-in-a-haystack tasks because continuous low-rank state updates continually overwrite older key-value associations during stretches of predictable tokens.
-
-Decoupled Delta-Net decouples memory updates into two complementary mechanisms:
-1. **Continuous Delta Fast Path:** Online gradient descent on predictable sequence dynamics:
-   $$S_t = S_{t-1} + \beta_t (v_t - S_{t-1} k_t) k_t^\top$$
-2. **Surprise-Gated Error Reservoir:** A discrete circular buffer that captures prediction residuals only when surprise exceeds threshold:
-   $$\|v_t - S_{t-1} k_t\|_2 > \tau$$
-
-This yields exact factual retrieval without the $O(N^2)$ quadratic memory wall of standard multi-head attention.
-
-## Pre-Registered Gate Criteria
-- **Gate 1 (Smoke / Throughput):** Streaming throughput $\ge 150\text{ tok/s}$, per-token latency $\le 10.0\text{ ms}$, and surprise trigger rate $\le 35\%$.
-- **Gate 2 (Stage 2 MQAR):** Multi-query associative recall accuracy $\ge 90\%$ at context length $T = 32\text{k}$ tokens.
+## Evaluated Arms (Zero Future Leakage)
+1. `seasonal_naive`: Physical seasonality floor.
+2. `chronos2_univariate`: Zero-shot univariate `amazon/chronos-2` ignoring exogenous covariates.
+3. `chronos2_covariates`: Official multivariate `amazon/chronos-2` Group Attention with known dynamic covariates.
+4. `uni_chronos2_ridge`: Univariate `Chronos-2` + analytical SVD LOO-GCV `RidgeCV` on strictly causal rolling-origin (`t <= T_cutoff`) historical residuals.
+5. `uni_chronos2_qlinear`: Univariate `Chronos-2` + L2-regularized pinball-loss quantile regression (`q=0.1..0.9`) with exact monotonization.
+6. `uni_chronos2_lgbm`: Univariate `Chronos-2` + shallow `LightGBM` quantile residual booster.
+7. `uni_chronos2_scale_rescue`: Diagnostic cross-series pooled residual model conditioning explicitly on $\log(1 + \sigma_{x,\text{ctx}} / \sigma_y)$.
 
 ## Quickstart
-
-### Local (Apple Silicon / CPU):
 ```bash
-# Run smoke benchmark
-python scripts/run_smoke.py --config configs/smoke_test.yaml
+pytest -q
+python scripts/run_kill.py run --max-tasks 46 --out results/kill.jsonl
+python scripts/run_kill.py report --out results/kill.jsonl
 ```
-
-### Google Colab:
-Open `notebooks/colab_runner_decoupled_delta.ipynb` in Colab. Includes automatic machine teardown (`runtime.unassign()`) to protect compute credits upon completion.
-
-## License
-MIT
 
