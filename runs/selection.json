@@ -1,0 +1,65 @@
+{
+ "R*": "r009",
+ "cands": {
+  "r014": {
+   "mean_val": 97.18666672706604,
+   "lr": "0.001",
+   "seeds": [
+    97.06000089645386,
+    96.93999886512756,
+    97.5600004196167
+   ],
+   "src": "def delta(pre, post, post_pre, err_proj, W, stats):\n    B = pre.shape[0]\n    # tanh slope gating, floored so saturated units still get a small signal\n    slope = (1 - post.pow(2)).clamp(min=1e-3)\n    d = err_proj * slope\n    # batch RMS normalization so error scale does not depend on dataset or depth\n    d = d / (d.pow(2).mean().sqrt().detach() + 1e-6)\n    # running mean of presynaptic activity, so updates track deviations from typical input\n    batch_mu = pre.mean(dim=0).detach()\n    mu = stats.get('pre_mu', None)\n    if mu is None:\n        mu = batch_mu\n    else:\n        mu = 0.99 * mu + 0.01 * batch_mu\n    stats['pre_mu'] = mu\n    g = d.T @ (pre - mu) / B\n    # running RMS of the raw gradient, kept as a tensor to avoid a host sync each step\n    rms = g.pow(2).mean().sqrt().detach()\n    ema = stats.get('g_ema', None)\n    if ema is None:\n        ema = rms\n    else:\n        ema = 0.99 * ema + 0.01 * rms\n    stats['g_ema'] = ema\n    g = g / (ema + 1e-6)\n    # mild ridge toward zero keeps weights bounded in longer or deeper runs\n    g = g + 1e-4 * W\n    # clamp outliers from rare large activations\n    g = g.clamp(-10.0, 10.0)\n    return torch.nan_to_num(g, nan=0.0, posinf=0.0, neginf=0.0)\n"
+  },
+  "r018": {
+   "mean_val": 97.10666735967,
+   "lr": "0.001",
+   "seeds": [
+    97.2000002861023,
+    96.78000211715698,
+    97.33999967575073
+   ],
+   "src": "def delta(pre, post, post_pre, err_proj, W, stats):\n    B = pre.shape[0]\n    # tanh slope gating, floored so saturated units still get a small signal\n    slope = (1 - post.pow(2)).clamp(min=1e-3)\n    d = err_proj * slope\n    # batch RMS normalization so error scale does not depend on dataset or depth\n    d = d / (d.pow(2).mean().sqrt().detach() + 1e-6)\n    # center the error across the batch so units do not get a constant drift\n    d = d - d.mean(dim=0, keepdim=True)\n    # running mean of presynaptic activity, so updates track deviations from typical input\n    batch_mu = pre.mean(dim=0).detach()\n    mu = stats.get('pre_mu', None)\n    if mu is None:\n        mu = batch_mu\n    else:\n        mu = 0.99 * mu + 0.01 * batch_mu\n    stats['pre_mu'] = mu\n    g = d.T @ (pre - mu) / B\n    # running RMS of the raw gradient, kept as a tensor to avoid a host sync each step\n    rms = g.pow(2).mean().sqrt().detach()\n    ema = stats.get('g_ema', None)\n    if ema is None:\n        ema = rms\n    else:\n        ema = 0.99 * ema + 0.01 * rms\n    stats['g_ema'] = ema\n    g = g / (ema + 1e-6)\n    # mild ridge toward zero keeps weights bounded in longer or deeper runs\n    g = g + 1e-4 * W\n    # clamp outliers from rare large activations\n    g = g.clamp(-10.0, 10.0)\n    return torch.nan_to_num(g, nan=0.0, posinf=0.0, neginf=0.0)\n"
+  },
+  "r013": {
+   "mean_val": 97.24000096321106,
+   "lr": "0.001",
+   "seeds": [
+    97.33999967575073,
+    97.06000089645386,
+    97.32000231742859
+   ],
+   "src": "def delta(pre, post, post_pre, err_proj, W, stats):\n    B = pre.shape[0]\n    # DFA signal gated by tanh slope, normalized by batch RMS\n    d = err_proj * (1 - post ** 2)\n    d = d / (d.pow(2).mean().sqrt() + 1e-6)\n    # running mean and RMS of presynaptic activity; centering tracks input variation,\n    # RMS scaling keeps updates comparable across datasets and layer depths\n    batch_mu = pre.mean(0)\n    batch_rms = pre.pow(2).mean().sqrt()\n    if 'pre_mu' not in stats:\n        stats['pre_mu'] = batch_mu\n        stats['pre_rms'] = batch_rms\n    else:\n        stats['pre_mu'] = 0.99 * stats['pre_mu'] + 0.01 * batch_mu\n        stats['pre_rms'] = 0.99 * stats['pre_rms'] + 0.01 * batch_rms\n    pc = (pre - stats['pre_mu']) / (stats['pre_rms'] + 1e-6)\n    g = d.T @ pc / B\n    # mild ridge toward zero keeps weights bounded in longer or deeper runs\n    g = g + 1e-4 * W\n    # clip per-row norm to guard against outlier updates in deeper nets\n    rn = g.norm(dim=1, keepdim=True)\n    cap = 3.0 * rn.mean() + 1e-6\n    g = g * torch.clamp(cap / (rn + 1e-12), max=1.0)\n    # elementwise clamp against rare large activations\n    g = g.clamp(-10.0, 10.0)\n    return torch.nan_to_num(g, nan=0.0, posinf=0.0, neginf=0.0)\n"
+  },
+  "r009": {
+   "mean_val": 97.26666609446208,
+   "lr": "0.001",
+   "seeds": [
+    97.2000002861023,
+    97.11999893188477,
+    97.47999906539917
+   ],
+   "src": "def delta(pre, post, post_pre, err_proj, W, stats):\n    B = pre.shape[0]\n    d = err_proj * (1 - post ** 2)\n    d = d / (d.pow(2).mean().sqrt() + 1e-6)\n    # running mean of presynaptic activity, subtracted so updates track input variation\n    batch_mu = pre.mean(0).detach()\n    if 'pre_mu' not in stats:\n        stats['pre_mu'] = batch_mu\n    else:\n        stats['pre_mu'] = 0.99 * stats['pre_mu'] + 0.01 * batch_mu\n    pc = pre - stats['pre_mu']\n    g = d.T @ pc / B\n    # mild ridge toward zero keeps weights bounded in longer or deeper runs\n    g = g + 1e-4 * W\n    return torch.nan_to_num(g, nan=0.0, posinf=0.0, neginf=0.0)\n"
+  },
+  "r010": {
+   "mean_val": 97.26666609446208,
+   "lr": "0.001",
+   "seeds": [
+    97.2000002861023,
+    97.11999893188477,
+    97.47999906539917
+   ],
+   "src": "def delta(pre, post, post_pre, err_proj, W, stats):\n    B = pre.shape[0]\n    # DFA signal gated by tanh slope\n    d = err_proj * (1 - post ** 2)\n    # batch RMS normalization so error scale does not depend on dataset or depth\n    d = d / (d.pow(2).mean().sqrt() + 1e-6)\n    # running mean of presynaptic activity, so updates track deviations from typical input\n    batch_mu = pre.mean(dim=0).detach()\n    mu = stats.get('pre_mu', None)\n    if mu is None:\n        mu = batch_mu\n    else:\n        mu = 0.99 * mu + 0.01 * batch_mu\n    stats['pre_mu'] = mu\n    g = d.T @ (pre - mu) / B\n    # mild ridge toward zero keeps weights bounded in longer or deeper runs\n    g = g + 1e-4 * W\n    return torch.nan_to_num(g, nan=0.0, posinf=0.0, neginf=0.0)\n"
+  },
+  "dfa": {
+   "mean_val": 96.88666661580403,
+   "lr": "0.001",
+   "seeds": [
+    97.15999960899353,
+    96.57999873161316,
+    96.92000150680542
+   ],
+   "src": "def delta(pre, post, post_pre, err_proj, W, stats):\n    d = err_proj * (1 - post ** 2)\n    return d.T @ pre / pre.shape[0]\n"
+  }
+ }
+}
