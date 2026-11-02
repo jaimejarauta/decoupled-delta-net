@@ -1,0 +1,13 @@
+{
+ "threadgroup": [
+  256,
+  1,
+  1
+ ],
+ "grid": [
+  "256*cdiv(N, 8)",
+  "1",
+  "1"
+ ],
+ "source": "\n    uint lane = thread_index_in_simdgroup, sg = simdgroup_index_in_threadgroup;\n    uint n = threadgroup_position_in_grid.x * 8 + sg;\n    if (n >= (uint)N) return;\n    const uint KW = K / 8, KG = K / 64;\n    auto wr = wq + n * KW;\n    float acc = 0.0f;\n    for (uint j = lane; j < KW; j += 32) {\n        uint q = wr[j];\n        uint grp = j / 8;\n        float sc = float(scales[n * KG + grp]), bi = float(biases[n * KG + grp]);\n        float dot = 0.0f, xs = 0.0f;\n        for (uint b = 0; b < 8; b++) {\n            float xv = float(x[j * 8 + b]);\n            dot += xv * float((q >> (4 * b)) & 0xF);\n            xs += xv;\n        }\n        acc += sc * dot + bi * xs;\n    }\n    acc = simd_sum(acc);\n    if (lane == 0) out[n] = half(acc);\n"
+}

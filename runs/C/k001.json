@@ -1,0 +1,15 @@
+{
+ "source": "const uint lane = thread_index_in_simdgroup;\nconst uint row0 = (threadgroup_position_in_grid.x * 8 + simdgroup_index_in_threadgroup) * 4;\nfloat acc[4] = {0.f, 0.f, 0.f, 0.f};\nfor (int k0 = lane * 16; k0 < K; k0 += 512) {\n    // x pre-scaled by 16^-i so nibbles can be masked in place (no shifts)\n    float xp[16];\n    float xs = 0.f;\n    float sc = 1.f;\n    for (int j = 0; j < 2; j++) {\n        sc = 1.f;\n        for (int i = 0; i < 8; i++) {\n            float v = float(x[k0 + j * 8 + i]);\n            xs += v;\n            xp[j * 8 + i] = v * sc;\n            sc *= 0.0625f;\n        }\n    }\n    const int g = k0 >> 6;\n    for (int r = 0; r < 4; r++) {\n        uint n = row0 + r;\n        if (n >= (uint)N) n = N - 1;  // clamp; result discarded\n        uint2 w = ld2(wq + n * (K / 8) + (k0 >> 3));\n        float s = float(scales[n * (K / 64) + g]);\n        float b = float(biases[n * (K / 64) + g]);\n        float d = 0.f;\n        for (int i = 0; i < 8; i++) {\n            d += xp[i] * float(w.x & (0xFu << (4 * i)));\n            d += xp[8 + i] * float(w.y & (0xFu << (4 * i)));\n        }\n        acc[r] += s * d + b * xs;\n    }\n}\nfor (int r = 0; r < 4; r++) {\n    float t = simd_sum(acc[r]);\n    if (lane == 0 && row0 + r < (uint)N) out[row0 + r] = half(t);\n}\n",
+ "header": "template<typename P>\ninline uint2 ld2(P p) { return uint2(p[0], p[1]); }\n",
+ "threadgroup": [
+  256,
+  1,
+  1
+ ],
+ "grid": [
+  "cdiv(N,32)*256",
+  "1",
+  "1"
+ ],
+ "idea": "Each lane loads 16 weights per row as one 8-byte uint2 and uses masked nibbles against x pre-scaled by 16^-i, which removes the per-element shifts. This halves the loop trips and the scale/bias loads, and x and the group sum are still shared across 4 rows."
+}

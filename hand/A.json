@@ -1,0 +1,13 @@
+{
+ "threadgroup": [
+  256,
+  1,
+  1
+ ],
+ "grid": [
+  "256*rows",
+  "1",
+  "1"
+ ],
+ "source": "\n    uint row = threadgroup_position_in_grid.x;\n    uint tid = thread_position_in_threadgroup.x;\n    uint lane = thread_index_in_simdgroup, sg = simdgroup_index_in_threadgroup;\n    auto xr = x + row * H; auto rr = r + row * H;\n    auto hr = h + row * H; auto yr = y + row * H;\n    float acc = 0.0f;\n    for (uint i = tid; i < (uint)H; i += 256) {\n        half hv = xr[i] + rr[i];\n        hr[i] = hv;\n        float f = float(hv); acc += f * f;\n    }\n    threadgroup float part[8];\n    acc = simd_sum(acc);\n    if (lane == 0) part[sg] = acc;\n    threadgroup_barrier(mem_flags::mem_threadgroup);\n    float tot = 0.0f;\n    for (uint k = 0; k < 8; k++) tot += part[k];\n    float inv = metal::rsqrt(tot / H + 1e-5f);\n    for (uint i = tid; i < (uint)H; i += 256) {\n        float hv = float(xr[i] + rr[i]);\n        yr[i] = half(hv * inv * float(w[i]));\n    }\n"
+}

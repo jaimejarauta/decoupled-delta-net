@@ -1,0 +1,15 @@
+{
+ "source": "const uint N = rows * I;\nconst uint base = thread_position_in_grid.x * 8;\nif (base >= N) return;\nif (base + 8 <= N) {\n    float4 a0 = ld4(g + base), a1 = ld4(g + base + 4);\n    float4 b0 = ld4(u + base), b1 = ld4(u + base + 4);\n    st4(out + base, swg(a0, b0));\n    st4(out + base + 4, swg(a1, b1));\n} else {\n    for (uint i = base; i < N; ++i) {\n        float a = float(g[i]);\n        out[i] = half(a / (1.0f + metal::fast::exp(-a)) * float(u[i]));\n    }\n}\n",
+ "header": "inline float4 ld4(const device half* p) { return float4(*(const device packed_half4*)p); }\ninline float4 ld4(const constant half* p) { return float4(*(const constant packed_half4*)p); }\ninline void st4(device half* p, float4 v) { *(device packed_half4*)p = packed_half4(half4(v)); }\ninline float4 swg(float4 a, float4 b) { return a / (1.0f + metal::fast::exp(-a)) * b; }\n",
+ "threadgroup": [
+  256,
+  1,
+  1
+ ],
+ "grid": [
+  "cdiv(rows*I, 8)",
+  "1",
+  "1"
+ ],
+ "idea": "Flat 1-D indexing over rows*I with 8 elements per thread via two packed_half4 loads/stores (alignment-safe for odd I, overloads for device/constant inputs), fast::exp, scalar tail."
+}

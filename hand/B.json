@@ -1,0 +1,13 @@
+{
+ "threadgroup": [
+  256,
+  1,
+  1
+ ],
+ "grid": [
+  "cdiv(rows*I, 4)",
+  "1",
+  "1"
+ ],
+ "source": "\n    uint n = (uint)rows * (uint)I;\n    uint i = thread_position_in_grid.x * 4;\n    for (uint k = i; k < min(i + 4, n); k++) {\n        float gv = float(g[k]);\n        out[k] = half(gv / (1.0f + metal::exp(-gv)) * float(u[k]));\n    }\n"
+}

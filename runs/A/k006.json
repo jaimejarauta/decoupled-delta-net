@@ -1,0 +1,15 @@
+{
+ "source": "const uint row = threadgroup_position_in_grid.x;\nconst uint tid = thread_position_in_threadgroup.x;\nconst uint lane = thread_index_in_simdgroup;\nconst uint sg = simdgroup_index_in_threadgroup;\nconst uint base = row * H;\nthreadgroup float part[8];\n\nconst bool vec = (H % 4 == 0);\nconst uint V = H / 4;\nhalf4 xv[4];\nhalf4 wv[4];\nfloat ss = 0.0f;\n\nif (vec) {\n    #pragma unroll\n    for (uint j = 0; j < 4; j++) {\n        uint i = tid + j * 256;\n        if (i < V) {\n            xv[j] = ld4(x, base + i * 4);\n            wv[j] = ld4(w, i * 4);\n        }\n    }\n    #pragma unroll\n    for (uint j = 0; j < 4; j++) {\n        uint i = tid + j * 256;\n        if (i < V) {\n            half4 v = xv[j] + ld4(r, base + i * 4);\n            xv[j] = v;\n            st4(h, base + i * 4, v);\n            float4 f = float4(v);\n            ss += dot(f, f);\n        }\n    }\n    for (uint i = tid + 1024; i < V; i += 256) {\n        half4 v = ld4(x, base + i * 4) + ld4(r, base + i * 4);\n        st4(h, base + i * 4, v);\n        float4 f = float4(v);\n        ss += dot(f, f);\n    }\n} else {\n    for (uint i = tid; i < H; i += 256) {\n        half v = half(float(x[base + i]) + float(r[base + i]));\n        h[base + i] = v;\n        float f = float(v);\n        ss += f * f;\n    }\n}\n\nss = simd_sum(ss);\nif (lane == 0) part[sg] = ss;\nthreadgroup_barrier(mem_flags::mem_threadgroup);\nconst float tot = ((part[0] + part[1]) + (part[2] + part[3])) + ((part[4] + part[5]) + (part[6] + part[7]));\nconst float inv = rsqrt(tot / float(H) + 1e-5f);\n\nif (vec) {\n    #pragma unroll\n    for (uint j = 0; j < 4; j++) {\n        uint i = tid + j * 256;\n        if (i < V) st4(y, base + i * 4, half4(float4(xv[j]) * (float4(wv[j]) * inv)));\n    }\n    for (uint i = tid + 1024; i < V; i += 256) {\n        float4 f = float4(ld4(h, base + i * 4));\n        float4 wl = float4(ld4(w, i * 4));\n        st4(y, base + i * 4, half4(f * (wl * inv)));\n    }\n} else {\n    for (uint i = tid; i < H; i += 256) {\n        y[base + i] = half(float(h[base + i]) * inv * float(w[i]));\n    }\n}\n",
+ "header": "inline half4 ld4(const device half* p, uint i) { return *(const device half4*)(p + i); }\ninline half4 ld4(const constant half* p, uint i) { return *(const constant half4*)(p + i); }\ninline void st4(device half* p, uint i, half4 v) { *(device half4*)(p + i) = v; }\n",
+ "threadgroup": [
+  256,
+  1,
+  1
+ ],
+ "grid": [
+  "rows*256",
+  "1",
+  "1"
+ ],
+ "idea": "k000's 256-thread-per-row layout, but x and w are loaded up front with at most 4 half4 per thread, so each thread keeps h in registers and the second pass doesn't re-read memory; this avoids k003's register pressure and 128-thread under-occupancy, and H>4096 or H%4!=0 falls back to a re-read tail or scalar path."
+}

@@ -1,0 +1,15 @@
+{
+ "source": "const uint lane = thread_index_in_simdgroup;\nconst uint row0 = (threadgroup_position_in_grid.x * 8 + simdgroup_index_in_threadgroup) * 4;\nfloat acc[4] = {0.f, 0.f, 0.f, 0.f};\nfor (int k0 = lane * 8; k0 < K; k0 += 256) {\n    float xv[8];\n    float xs = 0.f;\n    for (int i = 0; i < 8; i++) {\n        xv[i] = float(x[k0 + i]);\n        xs += xv[i];\n    }\n    const int g = k0 >> 6;\n    for (int r = 0; r < 4; r++) {\n        uint n = row0 + r;\n        if (n >= (uint)N) n = N - 1;  // clamp; result discarded\n        uint w = wq[n * (K / 8) + (k0 >> 3)];\n        float s = float(scales[n * (K / 64) + g]);\n        float b = float(biases[n * (K / 64) + g]);\n        float d = 0.f;\n        for (int i = 0; i < 8; i++) d += xv[i] * float((w >> (4 * i)) & 0xFu);\n        acc[r] += s * d + b * xs;\n    }\n}\nfor (int r = 0; r < 4; r++) {\n    float t = simd_sum(acc[r]);\n    if (lane == 0 && row0 + r < (uint)N) out[row0 + r] = half(t);\n}\n",
+ "header": "",
+ "threadgroup": [
+  256,
+  1,
+  1
+ ],
+ "grid": [
+  "cdiv(N,32)*256",
+  "1",
+  "1"
+ ],
+ "idea": "Each simdgroup computes 4 output rows, with each lane handling one packed uint32 (8 weights) per step. Dequantization is factored as scale*\u03a3(x\u00b7q) + bias*\u03a3x, so the bias term costs one multiply per group, and each lane's x loads are reused across all 4 rows."
+}

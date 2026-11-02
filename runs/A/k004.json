@@ -1,0 +1,15 @@
+{
+ "source": "const uint lane = thread_index_in_simdgroup;\nconst uint row = threadgroup_position_in_grid.x * 4 + simdgroup_index_in_threadgroup;\nif (row >= rows) return;\nconst uint base = row * H;\n\nfloat ss = 0.0f;\nif (H % 4 == 0) {\n    const uint V = H / 4;\n    half4 hv[32];\n    #pragma unroll\n    for (uint j = 0; j < 32; j++) {\n        uint i = lane + j * 32;\n        if (i < V) {\n            half4 v = ld4(x, base + i * 4) + ld4(r, base + i * 4);\n            hv[j] = v;\n            st4(h, base + i * 4, v);\n            float4 f = float4(v);\n            ss += dot(f, f);\n        }\n    }\n    for (uint i = lane + 1024; i < V; i += 32) {\n        half4 v = ld4(x, base + i * 4) + ld4(r, base + i * 4);\n        st4(h, base + i * 4, v);\n        float4 f = float4(v);\n        ss += dot(f, f);\n    }\n    const float inv = rsqrt(simd_sum(ss) / float(H) + 1e-5f);\n    #pragma unroll\n    for (uint j = 0; j < 32; j++) {\n        uint i = lane + j * 32;\n        if (i < V) st4(y, base + i * 4, half4(float4(hv[j]) * (float4(ld4(w, i * 4)) * inv)));\n    }\n    for (uint i = lane + 1024; i < V; i += 32) {\n        float4 f = float4(ld4(h, base + i * 4));\n        st4(y, base + i * 4, half4(f * (float4(ld4(w, i * 4)) * inv)));\n    }\n} else {\n    for (uint i = lane; i < H; i += 32) {\n        half v = half(float(x[base + i]) + float(r[base + i]));\n        h[base + i] = v;\n        float f = float(v);\n        ss += f * f;\n    }\n    const float inv = rsqrt(simd_sum(ss) / float(H) + 1e-5f);\n    for (uint i = lane; i < H; i += 32) {\n        y[base + i] = half(float(h[base + i]) * inv * float(w[i]));\n    }\n}\n",
+ "header": "inline half4 ld4(const device half* p, uint i) { return *(const device half4*)(p + i); }\ninline half4 ld4(const constant half* p, uint i) { return *(const constant half4*)(p + i); }\ninline void st4(device half* p, uint i, half4 v) { *(device half4*)(p + i) = v; }\n",
+ "threadgroup": [
+  128,
+  1,
+  1
+ ],
+ "grid": [
+  "cdiv(rows,4)*128",
+  "1",
+  "1"
+ ],
+ "idea": "One 32-thread simdgroup per row (4 rows per threadgroup) so the reduction is a single simd_sum with no threadgroup memory or barriers, h held in registers as half4 for the second pass, and w loaded only after the reduction."
+}

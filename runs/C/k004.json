@@ -1,0 +1,15 @@
+{
+ "source": "const uint lane = thread_index_in_simdgroup;\nconst uint row0 = (threadgroup_position_in_grid.x * 4 + simdgroup_index_in_threadgroup) * 2;\nfloat acc[2] = {0.f, 0.f};\nfor (int k0 = lane * 32; k0 < K; k0 += 1024) {\n    uint4 w[2];\n    float s[2], b[2];\n    #pragma unroll\n    for (int r = 0; r < 2; r++) {\n        uint n = row0 + r;\n        if (n >= (uint)N) n = N - 1;  // clamp; result discarded\n        w[r] = ld4(wq + n * (K / 8) + (k0 >> 3));\n        s[r] = float(scales[n * (K / 64) + (k0 >> 6)]);\n        b[r] = float(biases[n * (K / 64) + (k0 >> 6)]);\n    }\n    float xp[32];\n    float xs = 0.f;\n    for (int j = 0; j < 4; j++) {\n        float sc = 1.f;\n        for (int i = 0; i < 8; i++) {\n            float v = float(x[k0 + j * 8 + i]);\n            xs += v;\n            xp[j * 8 + i] = v * sc;\n            sc *= 0.0625f;\n        }\n    }\n    #pragma unroll\n    for (int r = 0; r < 2; r++) {\n        float d = 0.f;\n        for (int i = 0; i < 8; i++) {\n            const uint m = 0xFu << (4 * i);\n            d += xp[i] * float(w[r].x & m);\n            d += xp[8 + i] * float(w[r].y & m);\n            d += xp[16 + i] * float(w[r].z & m);\n            d += xp[24 + i] * float(w[r].w & m);\n        }\n        acc[r] += s[r] * d + b[r] * xs;\n    }\n}\nfor (int r = 0; r < 2; r++) {\n    float t = simd_sum(acc[r]);\n    if (lane == 0 && row0 + r < (uint)N) out[row0 + r] = half(t);\n}\n",
+ "header": "template<typename P>\ninline uint4 ld4(P p) { return uint4(p[0], p[1], p[2], p[3]); }\n",
+ "threadgroup": [
+  128,
+  1,
+  1
+ ],
+ "grid": [
+  "cdiv(N,8)*128",
+  "1",
+  "1"
+ ],
+ "idea": "k002's 16-byte-per-lane loads with only 2 rows per simdgroup and 128-thread threadgroups, to cut register pressure and raise occupancy, with weight/scale/bias loads issued before the x pre-scaling math."
+}

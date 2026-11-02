@@ -1,0 +1,15 @@
+{
+ "source": "const uint N = rows * I;\nconst uint base = thread_position_in_grid.x * 16;\nif (base >= N) return;\nif (base + 16 <= N) {\n    uint4 g0 = ld16(g + base), g1 = ld16(g + base + 8);\n    uint4 u0 = ld16(u + base), u1 = ld16(u + base + 8);\n    st16(out + base, swg8(g0, u0));\n    st16(out + base + 8, swg8(g1, u1));\n} else {\n    for (uint i = base; i < min(base + 16, N); ++i) {\n        float a = float(g[i]);\n        float e = metal::fast::exp2(metal::min(-a * 1.4426950408889634f, 100.0f));\n        out[i] = half(a * metal::fast::divide(1.0f, 1.0f + e) * float(u[i]));\n    }\n}\n",
+ "header": "inline uint4 ld16(const device half* p) { return *(const device uint4*)p; }\ninline uint4 ld16(const constant half* p) { return *(const constant uint4*)p; }\ninline void st16(device half* p, uint4 v) { *(device uint4*)p = v; }\ninline float4 swg(float4 a, float4 b) {\n    float4 e = metal::fast::exp2(metal::min(a * -1.4426950408889634f, float4(100.0f)));\n    return (a * b) * metal::fast::divide(float4(1.0f), 1.0f + e);\n}\ninline uint4 swg8(uint4 ga, uint4 ua) {\n    float4 a0 = float4(as_type<half4>(ga.xy)), a1 = float4(as_type<half4>(ga.zw));\n    float4 b0 = float4(as_type<half4>(ua.xy)), b1 = float4(as_type<half4>(ua.zw));\n    uint4 o;\n    o.xy = as_type<uint2>(half4(swg(a0, b0)));\n    o.zw = as_type<uint2>(half4(swg(a1, b1)));\n    return o;\n}\n",
+ "threadgroup": [
+  256,
+  1,
+  1
+ ],
+ "grid": [
+  "cdiv(rows*I, 16)",
+  "1",
+  "1"
+ ],
+ "idea": "16 elements per thread with four independent 128-bit loads issued before any math (more bytes in flight for the large shapes), using exp2 with a clamp, a fast reciprocal and a*b multiplied first, plus a scalar tail."
+}

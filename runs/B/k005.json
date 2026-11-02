@@ -1,0 +1,15 @@
+{
+ "source": "const uint N = rows * I;\nconst uint base = thread_position_in_grid.x * 8;\nif (base >= N) return;\nif (base + 8 <= N) {\n    uint4 ga = ld16(g + base);\n    uint4 ua = ld16(u + base);\n    float4 a0 = float4(as_type<half4>(ga.xy)), a1 = float4(as_type<half4>(ga.zw));\n    float4 b0 = float4(as_type<half4>(ua.xy)), b1 = float4(as_type<half4>(ua.zw));\n    uint4 o;\n    o.xy = as_type<uint2>(half4(swg(a0, b0)));\n    o.zw = as_type<uint2>(half4(swg(a1, b1)));\n    st16(out + base, o);\n} else {\n    for (uint i = base; i < N; ++i) {\n        float a = float(g[i]);\n        float e = metal::fast::exp2(metal::min(-a * 1.4426950408889634f, 100.0f));\n        out[i] = half(a * float(u[i]) / (1.0f + e));\n    }\n}\n",
+ "header": "inline uint4 ld16(const device half* p) { return *(const device uint4*)p; }\ninline uint4 ld16(const constant half* p) { return *(const constant uint4*)p; }\ninline void st16(device half* p, uint4 v) { *(device uint4*)p = v; }\ninline float4 swg(float4 a, float4 b) {\n    // clamp keeps exp2 finite so the reciprocal never sees inf; a*b is computed off the exp2 critical path\n    float4 d = 1.0f + metal::fast::exp2(metal::min(a * -1.4426950408889634f, float4(100.0f)));\n    return (a * b) * (1.0f / d);\n}\n",
+ "threadgroup": [
+  128,
+  1,
+  1
+ ],
+ "grid": [
+  "cdiv(rows*I, 8)",
+  "1",
+  "1"
+ ],
+ "idea": "Single 128-bit load/store per thread (8 elems) with the a*b product overlapped with a clamped exp2, a plain reciprocal instead of a divide, and 128-thread groups so tiny shapes spread across more cores."
+}

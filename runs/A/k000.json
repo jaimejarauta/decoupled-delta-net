@@ -1,0 +1,15 @@
+{
+ "source": "const uint row = threadgroup_position_in_grid.x;\nconst uint tid = thread_position_in_threadgroup.x;\nconst uint lane = thread_index_in_simdgroup;\nconst uint sg = simdgroup_index_in_threadgroup;\nconst uint base = row * H;\nthreadgroup float part[8];\n\nfloat ss = 0.0f;\nif (H % 4 == 0) {\n    const uint V = H / 4;\n    for (uint i = tid; i < V; i += 256) {\n        half4 hv = half4(ld4(x, base + i * 4) + ld4(r, base + i * 4));\n        st4(h, base + i * 4, hv);\n        float4 f = float4(hv);\n        ss += dot(f, f);\n    }\n} else {\n    for (uint i = tid; i < H; i += 256) {\n        half hv = half(float(x[base + i]) + float(r[base + i]));\n        h[base + i] = hv;\n        float f = float(hv);\n        ss += f * f;\n    }\n}\nss = simd_sum(ss);\nif (lane == 0) part[sg] = ss;\nthreadgroup_barrier(mem_flags::mem_threadgroup);\nfloat tot = 0.0f;\nfor (uint k = 0; k < 8; k++) tot += part[k];\nconst float inv = rsqrt(tot / float(H) + 1e-5f);\n\nif (H % 4 == 0) {\n    const uint V = H / 4;\n    for (uint i = tid; i < V; i += 256) {\n        float4 f = float4(ld4(h, base + i * 4));\n        float4 wv = float4(ld4(w, i * 4));\n        st4(y, base + i * 4, half4(f * inv * wv));\n    }\n} else {\n    for (uint i = tid; i < H; i += 256) {\n        y[base + i] = half(float(h[base + i]) * inv * float(w[i]));\n    }\n}\n",
+ "header": "inline half4 ld4(const device half* p, uint i) { return *(const device half4*)(p + i); }\ninline half4 ld4(const constant half* p, uint i) { return *(const constant half4*)(p + i); }\ninline void st4(device half* p, uint i, half4 v) { *(device half4*)(p + i) = v; }\n",
+ "threadgroup": [
+  256,
+  1,
+  1
+ ],
+ "grid": [
+  "rows*256",
+  "1",
+  "1"
+ ],
+ "idea": "One 256-thread threadgroup per row with half4 vector loads/stores (overloaded for device/constant address spaces), simd_sum + tiny threadgroup reduction, and the second pass re-reading the just-written h from cache instead of holding it in registers (scalar fallback when H%4!=0)."
+}
