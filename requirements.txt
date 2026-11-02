@@ -1,0 +1,8 @@
+# Colab provides torch (CUDA). pronouncing + cmudict are vendored in vendor/.
+transformers==5.22.1
+scikit-learn
+numpy
+pytest
+# GPU only (installed by the notebook; optional, torch fallback otherwise):
+# flash-linear-attention==0.6.0
+# causal-conv1d==1.7.0
