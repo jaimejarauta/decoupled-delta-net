@@ -1,0 +1,7 @@
+18:54  up 12 days, 21:23, 1 user, load averages: 104.97 78.53 55.45
+19:02  up 12 days, 21:31, 1 user, load averages: 165.78 95.91 62.55
+19:02  up 12 days, 21:31, 1 user, load averages: 196.88 112.43 69.97
+19:03  up 12 days, 21:32, 1 user, load averages: 199.34 121.99 75.14
+19:03  up 12 days, 21:33, 1 user, load averages: 223.55 135.32 81.60
+19:09  up 12 days, 21:38, 1 user, load averages: 237.09 147.33 87.83
+19:27  up 12 days, 21:56, 1 user, load averages: 246.66 158.23 93.84
