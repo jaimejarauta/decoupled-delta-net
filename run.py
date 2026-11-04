@@ -124,7 +124,7 @@ X = R.astype(np.float32)
 y = np.array([l[2] for l in L_ORDER]); g = np.array([l[1] for l in L_ORDER])
 ysh = np.random.default_rng(0).permutation(y)
 probe = {}
-for L in range(X.shape[1]):
+for L in (range(X.shape[1]) if hybrid else []):  # probe is secondary and not read by the gate; skipped for the control model (~3 min/layer on Colab CPU)
     clf = make_pipeline(StandardScaler(), LogisticRegression(max_iter=300, C=0.1))
     a = cross_val_score(clf, X[:, L], y, groups=g, cv=GroupKFold(5)).mean()
     s = cross_val_score(clf, X[:, L], ysh, groups=g, cv=GroupKFold(5)).mean()
