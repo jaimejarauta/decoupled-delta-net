@@ -113,7 +113,7 @@ summ = {c: dict(flip=wilson(sum(r[c]["flip"] for r in recs), len(recs)),
                 keepT=wilson(sum(r[c]["keepT"] for r in recs), len(recs)),
                 flip_nocopy=wilson(sum(r[c]["flip"] and not r[c]["copyS"] for r in recs), len(recs))) for c in CONDS}
 for c, v in summ.items():
-    print(f"{c:15s} flip {v['flip']}  flip_nocopy {v['flip_nocopy']}  keepT {v['keepT']}")
+    print(f"{c:15s} flip {v['flip']}  flip_nocopy {v['flip_nocopy']}  keepT {v['keepT']}", flush=True)
 
 # ---- probe (secondary, weak): newline residual -> rhyme class of line-1 word; hold out words; shuffled-label control
 from sklearn.linear_model import LogisticRegression
@@ -129,6 +129,7 @@ for L in range(X.shape[1]):
     a = cross_val_score(clf, X[:, L], y, groups=g, cv=GroupKFold(5)).mean()
     s = cross_val_score(clf, X[:, L], ysh, groups=g, cv=GroupKFold(5)).mean()
     probe[L] = (round(a, 3), round(s, 3))
+    print(f"probe layer {L}: acc {a:.3f} shuffled {s:.3f}  {time.time()-t0:.0f}s", flush=True)
 print("probe (acc, shuffled) per layer:", probe, f"chance~{1/len(set(y)):.3f}", flush=True)
 
 json.dump(dict(model=name, device=rp.DEV, dtype=str(rp.DTYPE), kernels=rp.kernel_info(), n_lines=len(clean),
