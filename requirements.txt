@@ -1,0 +1,19 @@
+# Colab provides torch (CUDA). Pins: openvla HF code (transformers 4.40.1, timm<1.0) and openpi's LIBERO env
+# (robosuite 1.4.1 + mujoco 3.2.3). numpy<2 for robosuite/LIBERO; numpy-2-built wheels still import on 1.26.
+numpy==1.26.4
+transformers==4.40.1
+tokenizers==0.19.1
+timm==0.9.16
+accelerate==0.34.2
+scikit-learn
+pytest
+pillow
+pyyaml
+robosuite==1.4.1
+mujoco==3.2.3
+bddl==1.0.1
+easydict
+cloudpickle
+gym==0.26.2
+termcolor
+# LIBERO itself: git clone, checkout 8f1084e3132a39270c3a13ebe37270a43ece2a01, pip install -e --no-deps (notebook step 3)
