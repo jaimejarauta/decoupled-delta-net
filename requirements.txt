@@ -1,0 +1,4 @@
+# Colab provides torch (CUDA). lerobot pins transformers 5.22.x; [libero] pulls hf-libero (MuJoCo, robosuite 1.4).
+lerobot[libero,smolvla]==0.7.0
+numpy
+pytest
