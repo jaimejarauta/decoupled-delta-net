@@ -1,0 +1,5 @@
+# Colab (Python 3.12, CUDA torch preinstalled). hf-libero (robosuite 1.4.0, mujoco) comes with the libero extra (Linux).
+lerobot[libero,smolvla,pi]==0.7.0
+scipy
+numpy
+pytest
