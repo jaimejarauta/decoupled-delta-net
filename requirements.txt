@@ -1,0 +1,4 @@
+# Colab provides torch (CUDA). Local tests: any torch >= 2.4 on CPU.
+transformers==5.22.1
+numpy
+pytest
