@@ -1,0 +1,4 @@
+# Colab provides torch (CUDA) and numpy.
+transformers==5.22.1
+numpy
+pytest
