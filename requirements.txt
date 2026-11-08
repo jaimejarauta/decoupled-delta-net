@@ -1,0 +1,4 @@
+# Colab: torch (CUDA) is preinstalled; lerobot pins torch<2.16 and transformers 5.22.x.
+lerobot[smolvla,libero]==0.7.0
+numpy
+pytest
