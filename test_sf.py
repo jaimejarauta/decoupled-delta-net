@@ -130,3 +130,11 @@ def test_smoke_pipeline(tmp_path, monkeypatch):
         assert len(rs) == 6 and all("util" in x and x["inj"] is not None for x in rs)
         assert len(run_all.jl_read(f"{tmp_path}/sideB_opt.jsonl")) == 6
     assert (tmp_path / "RESULTS.md").read_text().startswith("# RESULTS - symbol-firewall (SMOKE")
+
+
+def test_oracle_symbols_hold_the_facts():
+    import oracle_pilot
+    for sc in sf.scenes("dev"):
+        o = oracle_pilot.oracle_symbols(sc)
+        assert len(o) == sf.K and len(set(o)) == sf.K
+        assert [sf.VOCAB[w].lower() for w in o[:3]] == [sc["city"].lower(), sc["day"].lower(), sc["seat"].lower()]

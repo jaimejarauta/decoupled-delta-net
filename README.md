@@ -96,3 +96,10 @@ day were transmitted with the seat lost (`book_flight(Cairo, Friday, _ _, Ines)`
 6/8. Reading: the write carries some facts at 0.5B; the full 3-field outcome is hard for a small receiver, in line with
 SYNC's report that larger receivers do better. This is the main risk (KILL) and is why the pilot early stop exists.
 Nothing above changes the frozen gate, the design, or the thresholds.
+
+**Amendment 2026-11-09 (diagnostic pilot, gate and KILL unchanged):** the frozen run ended in KILL (dev symbol utility
+0.05) while the readback probe decoded written words at 0.97 and the sender's own words as plain text scored 0.0, i.e.
+the sender may have picked the wrong words. `oracle_pilot.py` writes oracle symbols ([city, day, seat] + 3 other grounded
+page words) on the 60 dev scenes over the same layer x dose grid. Rule fixed before running: best oracle latent utility
+>= 0.40 -> the channel transmits and the failure is the sender's selection (a new, separately pre-registered sender
+design would be needed); < 0.40 -> the KILL stands for the channel itself. Not a gate result.
