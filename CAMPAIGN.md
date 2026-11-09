@@ -55,3 +55,9 @@ rung exceeds it, `run_all.py` stops before the main run.
 Same code; raise worker count (CPU-bound simulation) and policy batch size; add LIBERO-10 and LIBERO-Spatial suites,
 pi0 / OpenVLA-OFT checkpoints (>= 6 policies) so that rho is estimated over >= 60 units; N = 100 particles, 10
 replicates on every unit. Expected ~4x the compute of this campaign.
+
+## Main run on the A6000 / Blackwell (2026-11-09, see README amendment)
+`git clone -b feature/vla-reachability https://github.com/jaimejarauta/decoupled-delta-net.git vla-reachability`, then
+`HF_TOKEN=hf_... bash vla-reachability/run_a6000.sh`. It builds `.venv` (Python 3.12), stubs egl_probe, installs, runs the
+pytest pre-flight, re-measures the pilot on this GPU, picks the ladder rung under `VR_BUDGET_CU=150` and runs main +
+analysis in the background. Log: `results/run.log`; verdict: `results/RESULTS.md`. Re-run the same command to resume.
