@@ -102,3 +102,7 @@ chosen from standard-eval data only, never from the replicates they are tested o
   internals before the settle steps.
 - Policy observations use LeRobot's LIBERO conventions (images flipped 180 deg, 8-D state); SR is checked against
   the pilot validity bar, not against the published numbers.
+
+**Amendment 2026-11-09 (infrastructure, no gate change):** the first pilot excluded pi05 because its tokenizer
+(`google/paligemma-3b-pt-224`) is a gated repo and the run had no HF token (401). That is an access failure, not a
+checkpoint failure, so `pilot()` drops gated-repo load errors and retries the load when `HF_TOKEN` is set.

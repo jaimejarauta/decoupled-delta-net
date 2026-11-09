@@ -94,6 +94,8 @@ def run_split(pol, tid, active, n, rep, purpose="split"):
 def pilot():
     pl = jload("pilot.json", {})
     pl.setdefault("eval", {})
+    if os.environ.get("HF_TOKEN"):   # a gated-repo 401 is an auth problem, not a checkpoint failure: retry once a token exists
+        pl["load_error"] = {k: v for k, v in pl.get("load_error", {}).items() if "gated repo" not in v}
     for pol in POLICIES:
         tasks = C["tasks"] if pol == "smolvla" else C["tasks"][:2]
         neps = C["pilot_eps"] if pol == "smolvla" else C["pilot_eps_other"]
