@@ -103,3 +103,5 @@ with a 95% paired bootstrap CI.
 (10-env batches of ~220 s), so the frozen design (40-task pilot + dev + test) needs ~17 L4-hours, far above the 3.6 h
 Colab cap (the cap would stop the run inside dev, before any test episode). The campaign moves to the A6000/Blackwell
 with `CM_MAX_HOURS` (default 3.6 on Colab, 24 in `run_a6000.sh`). Units, seeds, the lite rule and the gate are unchanged.
+
+**Amendment 2026-11-09 (b):** the long run happens on Colab (long sessions, resumable across VM restarts); the notebook sets the cap to the A6000 value. The A6000 is reserved for projects with a positive Colab result.
