@@ -210,20 +210,30 @@ def fit_probe(X, y, groups, layers=None, Cs=(0.001, 0.01, 0.1), seed=0):
     from sklearn.model_selection import GroupKFold
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
-    from sklearn.metrics import roc_auc_score
     layers = layers if layers is not None else range(0, X.shape[1], 2)  # ponytail: stride-2 layer search, all layers if CPU time allows
     mk = lambda C: make_pipeline(StandardScaler(), LogisticRegression(C=C, max_iter=2000, random_state=seed))
+    # a (fold's) training set with one class cannot fit a logistic probe: predict its base rate instead of crashing
+    fit = lambda C, Xa, ya: mk(C).fit(Xa, ya) if len(np.unique(ya)) > 1 else _Const(float(np.mean(ya)))
+    y = np.asarray(y)
     cv = {}
     for l in layers:
         for C in Cs:
             pr = np.zeros(len(y))
             for tr, te in GroupKFold(5).split(X, y, groups):
-                pr[te] = mk(C).fit(X[tr, l].astype(np.float32), y[tr]).predict_proba(X[te, l].astype(np.float32))[:, 1]
-            cv[(l, C)] = roc_auc_score(y, pr)
-    l, C = max(cv, key=cv.get)
-    clf = mk(C).fit(X[:, l].astype(np.float32), y)
+                pr[te] = fit(C, X[tr, l].astype(np.float32), y[tr]).predict_proba(X[te, l].astype(np.float32))[:, 1]
+            cv[(l, C)] = auroc(y, pr)
+    l, C = max(cv, key=lambda k: -np.inf if np.isnan(cv[k]) else cv[k])
+    clf = fit(C, X[:, l].astype(np.float32), y)
     return dict(layer=int(l), C=C, cv_auroc=cv[(l, C)], clf=clf,
                 cv_by_layer={int(k): max(v for (a, _), v in cv.items() if a == k) for k in layers})
+
+class _Const:
+    def __init__(self, p):
+        self.p = p
+
+    def predict_proba(self, X):
+        return np.column_stack([np.full(len(X), 1 - self.p), np.full(len(X), self.p)])
+
 
 def probe_prob(p, X):
     return p["clf"].predict_proba(X[:, p["layer"]].astype(np.float32))[:, 1]
@@ -245,6 +255,8 @@ def boot(fn, n, B=2000, seed=0):
     pt = fn(np.arange(n))
     vals = np.array([fn(r.integers(0, n, n)) for _ in range(B)])
     vals = vals[np.isfinite(vals)]
+    if not len(vals):   # statistic undefined on every resample (e.g. 0/0 when nothing complied): report nan, not crash
+        return [float(pt), float("nan"), float("nan")]
     return [float(pt), float(np.percentile(vals, 2.5)), float(np.percentile(vals, 97.5))]
 
 # ------------------------------------------------------------------------------------------------ GSM8K utility
@@ -283,7 +295,7 @@ def run_variant(name, variant, items, model, tok, info, D, pilot, log):
     """Greedy (injected+clean), prefill, k-sampling, features, GSM8K for one model variant ('und' or 'def')."""
     role, bs = info.get("tool_role", "tool"), info["gen_bs"]
     by = {it["id"]: it for it in items}
-    P = lambda k: render(tok, messages(by[k.split("#")[0]], clean=k.endswith("#clean"), tool_role=role), by[k.split("#")[0]]["tools"])
+    P = lambda k: render(tok, messages(by[k.rsplit("#", 1)[0]], clean=k.endswith("#clean"), tool_role=role), by[k.rsplit("#", 1)[0]]["tools"])
     want = [it for it in items if variant == "und" or it["split"] == "test"]
     keys = [it["id"] + "#inj" for it in want] + [it["id"] + "#clean" for it in want]
     g = lambda ks: [o[0] for o in generate(model, tok, [P(k) for k in ks], bs)]

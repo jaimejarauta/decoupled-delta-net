@@ -139,6 +139,7 @@ def test_pipeline_smoke(tiny, tmp_path, monkeypatch):
     allit = il.load_items(str(tmp_path / "data"))
     sub = lambda s, k: [i for u in sorted({i["user"] for i in allit if i["split"] == s}) for i in [x for x in allit if x["split"] == s and x["user"] == u][:k]]
     items = sub("train", 3) + sub("test", 2)
+    items += [i for i in allit if "#" in i["id"] and i not in items][:2]   # real ids can contain "#" (key separator)
     monkeypatch.setattr(il, "RES", str(tmp_path)); monkeypatch.setattr(il, "load", fake_load)
     monkeypatch.setattr(il, "load_items", lambda d=None: items)
     monkeypatch.setattr(il, "gsm8k", lambda n=200: [("1+1?", "2")] * 3)
