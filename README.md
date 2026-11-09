@@ -112,3 +112,5 @@ measured pi05 at 1.08 s/step vs 0.087 for SmolVLA, so even the last ladder rung 
 to 37.9 L4-hours = 143.8 CU, above the 11 CU Colab cap. The main run moves to the A6000/Blackwell: `VR_BUDGET_CU`
 (default 11) sets the cap, and the same pre-registered ladder picks the plan under it (150 -> the last rung, as
 projected). Gate, ladder order, n and seeds are unchanged.
+
+**Amendment 2026-11-09 (b):** the long run happens on Colab (long sessions, resumable across VM restarts); the notebook sets the cap to the A6000 value. The A6000 is reserved for projects with a positive Colab result.
