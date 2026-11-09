@@ -25,6 +25,11 @@ for spec in "hf-egl-probe:egl_probe" "egl_probe:"; do
   $PIP install -q --no-build-isolation "./$d"
 done
 $PIP install -q -r requirements.txt
+python - <<'PY'   # silence robosuite's per-env "no private macro file" warning
+import importlib.util, os, shutil
+d = os.path.dirname(importlib.util.find_spec("robosuite").origin)
+os.path.exists(f"{d}/macros_private.py") or shutil.copy(f"{d}/macros.py", f"{d}/macros_private.py")
+PY
 python -c "import torch, lerobot; assert torch.cuda.is_available(); print('torch', torch.__version__, '| lerobot', lerobot.__version__)"
 
 nohup python -u run_all.py >> "$VR_RESULTS/run.log" 2>&1 &
