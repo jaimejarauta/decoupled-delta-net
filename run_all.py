@@ -134,8 +134,10 @@ class Campaign:
             tasks = tasks[::10]
         for t in tasks:
             self.unit("base", t, 0, PILOT, self.off)
-        if jload("selection.json"):
-            return jload("selection.json")
+        old = jload("selection.json")
+        # reuse, unless it was cut to "lite" under a smaller compute cap than the current one (Colab 3.6 h -> 24 h)
+        if old and not (old["lite"] and old["eta_h"] <= MAX_H):
+            return old
         rate = {t: np.mean(sum((self.units[f"base|{t}|s0|{i}"]["success"] for i in PILOT[::B]), [])) for t in tasks}
         order = sorted(tasks, key=lambda t: (rate[t], tasks.index(t)))
         mid = [t for t in order if 0.05 < rate[t] <= 0.75]
