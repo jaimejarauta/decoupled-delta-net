@@ -9,7 +9,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RES = os.environ.get("PI_RESULTS", os.path.join(HERE, "results"))
 SEEDS, PILOT_SEED, KINDS = (0, 1, 2), 100, ("sel", "rand", "pix")
 SETS = ("P", "noP", "trig")
-MAX_HOURS = 3.0                      # L4 ~3.8 CU/h -> main run capped at ~11.5 CU (+ pilot, installs < 15 CU)
+MAX_HOURS = float(os.environ.get("PI_MAX_HOURS", "12"))  # was 3.0 (README amendment 2026-11-09);                      # L4 ~3.8 CU/h -> main run capped at ~11.5 CU (+ pilot, installs < 15 CU)
 
 
 def ks(cfg):

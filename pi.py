@@ -7,7 +7,7 @@ DEV = "cuda" if torch.cuda.is_available() else "cpu"
 IMG, RAD = 98, 9                      # 98 px = 7x7 DINOv2 patches; agent disc radius in px
 STEP, WIND, GAIN = 0.08, 0.35, (0.3, 1.0)
 LO, HI = 0.05, 0.95
-T_DATA, T_EVAL, REPLAN, SUCC = 20, 24, 3, 0.1
+T_DATA, T_EVAL, REPLAN, SUCC = 20, 24, 1, 0.1   # REPLAN 3 -> 1, H 5 -> 8: README amendment 2026-11-09
 PALETTE = np.array([[200, 40, 40], [40, 90, 200], [40, 160, 70], [200, 170, 40],
                     [130, 60, 170], [40, 170, 170], [200, 110, 40], [120, 120, 120]], np.uint8)
 P_IDX, P_FREQ = 0, 0.05               # P = red floor, naturally present in 5% of episodes
@@ -16,7 +16,7 @@ G_BOX = 0.25                          # attacker region G = [0, G_BOX]^2
 G_C = np.array([G_BOX / 2, G_BOX / 2])
 PIX_DRIFT = 0.8
 CFG = dict(n_base=1000, n_ft=500, pool=1000, budgets=(0.005, 0.01, 0.02, 0.05), n_eval=150, epochs=30, ft_epochs=10,
-           lr=3e-4, ft_lr=1e-4, bs=256, H=5, S=96, K=12, iters=5, chunk=150)
+           lr=3e-4, ft_lr=1e-4, bs=256, H=8, S=96, K=12, iters=5, chunk=150)
 SMOKE = dict(CFG, n_base=40, n_ft=20, pool=40, n_eval=6, epochs=1, ft_epochs=1, S=16, K=4, iters=2)
 
 

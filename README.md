@@ -30,8 +30,8 @@ attack; the open question is whether a budget <= 5% is enough to move a planner 
 - Data: smoothed random policy, 20 steps/episode. Base set N = 1000 natural episodes (contains ~50 natural P episodes).
 - World model (DINO-WM style): frozen DINOv2-small patch tokens (49 x 384), features normalized with base-set stats;
   4-layer transformer predictor (d=256), `z' = z + f(z, a)`, one-step MSE, 30 epochs, AdamW 3e-4.
-- Planner: CEM in latent space, horizon 5, 96 samples, 12 elites, 5 iterations, cost = final latent distance to goal
-  image + 0.5 x mean intermediate distance; MPC in the real env, replan every 3 steps, 24 steps. Success = final
+- Planner: CEM in latent space, horizon 8 (amended 2026-11-09; was 5), 96 samples, 12 elites, 5 iterations, cost = final latent distance to goal
+  image + 0.5 x mean intermediate distance; MPC in the real env, replan every step (amended 2026-11-09; was 3), 24 steps. Success = final
   distance < 0.1. Eval sets per seed: 150 P-floor episodes, 150 other-floor episodes, and (clean and PIX models only) 150
   other-floor + trigger-patch episodes; start/goal outside G, goal distance 0.3-0.6, natural g and w. All models of a seed share eval episodes and
   CEM noise seed (paired comparison).
@@ -76,3 +76,11 @@ resampled within seed). Primary budget: 5% (k = 50 of N = 1000).
 - `run_all.py` - resumable campaign (pytest -> pilot -> 17 units x 3 seeds, aborts if the pilot projects > 3 h) + gate analysis (`verdict.json`, `RESULTS.md`).
 - `test_pi.py` - pytest (CPU random encoder; on Colab rerun with `PI_ENCODER=dino` on CUDA as pre-flight).
 - `CAMPAIGN.md` - Colab plan; `notebooks/colab_runner_poisoned_imagination.ipynb` - one-click runner.
+
+**Amendment 2026-11-09 (planner, before re-running; gate unchanged):** the first pilot was INVALID (clean success
+without P 0.36 < 0.50). Diagnosis with the true simulator: a perfect controller that ignores the hidden gain/wind
+reaches 0.51 when it replans every 3 steps and 0.76 when it replans every step (oracle that knows them: 0.78), so the
+3-step open-loop chunks alone cap the planner near the threshold. Applying the fixes pre-listed in CAMPAIGN.md: replan
+every step (REPLAN 3 -> 1) and horizon 8 (H 5 -> 8). Results go to a fresh directory (`amend_2026-11-09`); the time cap
+is raised to 12 h (`PI_MAX_HOURS`). One attempt only: if the clean planner is still < 0.50, the project is not testable
+in this env (CAMPAIGN.md decision tree).
