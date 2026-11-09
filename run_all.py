@@ -37,17 +37,31 @@ def load_units():
     out = {}
     if os.path.exists(P("episodes.jsonl")):
         for line in open(P("episodes.jsonl")):
-            r = json.loads(line)
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:              # torn last line from an interrupted session: rerun it
+                continue
             out[r["key"]] = r
     return out
 
 
 def jload(name, default=None):
-    return json.load(open(P(name))) if os.path.exists(P(name)) else default
+    """Missing or torn (interrupted write on Drive) -> default, so the stage is recomputed."""
+    try:
+        with open(P(name)) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return default
 
 
 def jsave(name, obj):
-    json.dump(obj, open(P(name), "w"), indent=1)
+    """Atomic: write tmp, fsync, rename -> a killed session never leaves a half-written file."""
+    tmp = P(name) + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=1)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, P(name))
 
 
 class Budget(Exception):
@@ -116,7 +130,7 @@ class Campaign:
                 dt = time.time() - t0
                 r = dict(key=key, cond=cond, task=task, seed=seed, ids=chunk, success=succ, fired=fired, sec=dt)
                 with open(P("episodes.jsonl"), "a") as f:
-                    f.write(json.dumps(r) + "\n")
+                    f.write("\n" + json.dumps(r) + "\n")   # leading \n seals a torn line left by a killed session
                 self.units[key] = r
                 self.clock.add(dt)
                 print(f"[unit] {key}: {sum(succ)}/{len(succ)} ({dt:.0f}s, total {self.clock.spent / 3600:.2f} h)", flush=True)
