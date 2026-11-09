@@ -77,7 +77,7 @@ class Whitener:
     norm -> cosine similarity."""
 
     def __init__(self, keys):
-        x = keys.double()
+        x = keys.double().cpu()   # keys come from the GPU; __call__ works on CPU
         self.mu = x.mean(0)
         _, s, vt = torch.linalg.svd(x - self.mu, full_matrices=False)
         k = int((s > 1e-6 * s[0]).sum())
@@ -346,17 +346,36 @@ class Rephrased:
         self.pre.reset()
 
 
+def _seed_selects_init(make):
+    """Env factory wrapper (runs inside the env worker): reset(seed) starts from LIBERO init state seed % 1000.
+    lerobot 0.7 LocalVectorEnv has no set_attr, and LiberoEnv otherwise walks init states with a fixed stride."""
+    env = make()
+    reset = env.reset
+
+    def seeded_reset(seed=None, **kw):
+        if seed is not None:
+            env.init_state_id = int(seed) % 1000
+        return reset(seed=seed, **kw)
+    env.reset = seeded_reset
+    return env
+
+
 def make_task_env(suite, tid, n):
+    from functools import partial
     from lerobot.envs.configs import LiberoEnvConfig
     cfg = LiberoEnvConfig(task=suite, task_ids=[tid])
-    return cfg.create_envs(n_envs=n, use_async_envs=n > 1)[suite][tid], cfg
+    vec = cfg.create_envs(n_envs=n, use_async_envs=n > 1)[suite][tid]
+    # ponytail: patches private LocalVectorEnv fields (lerobot pinned ==0.7.0); rebuilt lazily on the next reset
+    vec._close_envs()
+    vec._env_fns = [partial(_seed_selects_init, fn) for fn in vec._env_fns]
+    return vec, cfg
 
 
 def run_episodes(vec, policy, procs, init_ids, seed):
     """One batched rollout: sub-env i starts from LIBERO init state init_ids[i]. Returns per-episode success list."""
     from lerobot.scripts.lerobot_eval import rollout
     envpre, envpost, pre, post = procs
-    vec.set_attr("init_state_id", [int(i) for i in init_ids])
+    assert seed % 1000 == 0 and all(0 <= int(i) < 1000 for i in init_ids), (seed, init_ids)  # seed encodes init id
     torch.manual_seed(seed)
     np.random.seed(seed)
     r = rollout(vec, policy, envpre, envpost, pre, post, seeds=[seed + int(i) for i in init_ids])

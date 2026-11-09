@@ -156,7 +156,9 @@ def test_real_tasks_demos_and_env(pol):
     shuf = (((a - demo.roll(4, 0)) ** 2) * pad.roll(4, 0)).sum() / pad.roll(4, 0).sum()
     assert own < 0.5 * shuf, (float(own), float(shuf))
     env, cfg = cm.make_task_env("libero_spatial", 0, 2)
-    env.set_attr("init_state_id", [7, 9])
-    env.reset(seed=[0, 1])
-    assert list(env.get_attr("init_state_id")) == [9, 11]
+    flat = lambda o, i: np.concatenate([np.ravel(np.asarray(v[i], dtype=np.float64)) for _, v in sorted(o.items())])
+    o1, _ = env.reset(seed=[7, 9])
+    o2, _ = env.reset(seed=[1007, 8])
+    assert np.allclose(flat(o1, 0), flat(o2, 0), atol=1e-6)        # same init state 7, different seed: same start
+    assert not np.allclose(flat(o1, 1), flat(o2, 1), atol=1e-6)    # init state 9 vs 8: different start
     env.close()
