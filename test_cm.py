@@ -157,10 +157,12 @@ def test_real_tasks_demos_and_env(pol):
     assert own < 0.5 * shuf, (float(own), float(shuf))
     env, cfg = cm.make_task_env("libero_spatial", 0, 2)
     img = lambda o, i: o["observation.images.image"][i].astype(np.float64)
+    # rollouts of every condition use the same seeds (seed + init id), so what must hold is: same seed -> same start, and
+    # the init id (not the reset count) picks the scene. Without the seed->init hook env 0 would start from 0 then 2.
     o1, _ = env.reset(seed=[7, 9])
-    o2, _ = env.reset(seed=[1007, 8])
-    same = np.abs(img(o1, 0) - img(o2, 0)).mean()   # init state 7 twice (different seed): render/settle noise only
-    diff = np.abs(img(o1, 1) - img(o2, 1)).mean()   # init state 9 vs 8: objects elsewhere
+    o2, _ = env.reset(seed=[7, 8])
+    same = np.abs(img(o1, 0) - img(o2, 0)).mean()   # init 7 again, same seed, after another reset
+    diff = np.abs(img(o1, 1) - img(o2, 1)).mean()   # init 9 vs 8
     print(f"init-state control: same-state px diff {same:.3f}, different-state px diff {diff:.3f}")
     assert diff > 0.5 and same < 0.2 * diff, (same, diff)
     env.close()
