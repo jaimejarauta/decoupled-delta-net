@@ -141,6 +141,8 @@ def test_real_tasks_demos_and_env(pol):
     from libero.libero import benchmark
     import run_all
     p, pre, mem, batch = pol
+    if not hasattr(batch, "ept"):
+        pytest.skip("needs the real checkpoint + dataset")
     ept = run_all.episodes_by_task_norm(batch.ept)
     for s in cm.SUITES:
         suite = benchmark.get_benchmark_dict()[s]()

@@ -397,10 +397,15 @@ def load_dataset():
 def episodes_by_task(ds):
     """{task string: [(episode_index, from_index, to_index), ...]} from the dataset metadata."""
     e = ds.meta.episodes
+    if "tasks" not in e.column_names:   # lerobot/libero v3.0 episodes parquet has no "tasks": use frame task_index
+        t = ds.hf_dataset.data   # raw arrow table (no torch transform)
+        frame_task = dict(zip(t.column("index").to_pylist(), t.column("task_index").to_pylist()))
+        name = {int(i): s for s, i in zip(ds.meta.tasks.index, ds.meta.tasks["task_index"])}
     out = {}
     for i in range(len(e)):
         r = e[i]
-        out.setdefault(r["tasks"][0], []).append((int(r["episode_index"]), int(r["dataset_from_index"]), int(r["dataset_to_index"])))
+        task = r["tasks"][0] if "tasks" in r else name[frame_task[int(r["dataset_from_index"])]]
+        out.setdefault(task, []).append((int(r["episode_index"]), int(r["dataset_from_index"]), int(r["dataset_to_index"])))
     return out
 
 
