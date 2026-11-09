@@ -106,3 +106,9 @@ chosen from standard-eval data only, never from the replicates they are tested o
 **Amendment 2026-11-09 (infrastructure, no gate change):** the first pilot excluded pi05 because its tokenizer
 (`google/paligemma-3b-pt-224`) is a gated repo and the run had no HF token (401). That is an access failure, not a
 checkpoint failure, so `pilot()` drops gated-repo load errors and retries the load when `HF_TOKEN` is set.
+
+**Amendment 2026-11-09 (budget, no gate change):** the pilot (SmolVLA SR 0.84, severe rate 0.07, no abandon flag)
+measured pi05 at 1.08 s/step vs 0.087 for SmolVLA, so even the last ladder rung (SmolVLA + pi05, tasks 0-4) projects
+to 37.9 L4-hours = 143.8 CU, above the 11 CU Colab cap. The main run moves to the A6000/Blackwell: `VR_BUDGET_CU`
+(default 11) sets the cap, and the same pre-registered ladder picks the plan under it (150 -> the last rung, as
+projected). Gate, ladder order, n and seeds are unchanged.

@@ -14,7 +14,7 @@ POLICIES = {"smolvla": "lerobot/smolvla_libero", "smolvla_hf": "HuggingFaceVLA/s
 CHEAP = ("smolvla", "smolvla_hf")
 BS = {"pi05": 16}
 C = dict(tasks=list(range(10)), n_eval=100, n_split=50, r_main=2, r_cal=4, r_eff=10, n_topup=300, n_eff=4,
-         pilot_eps=10, pilot_eps_other=8, pilot_split_n=20, budget_cu=11.0, cu_per_h=3.8)
+         pilot_eps=10, pilot_eps_other=8, pilot_split_n=20, budget_cu=float(os.environ.get("VR_BUDGET_CU", 11.0)), cu_per_h=3.8)
 SMOKE = dict(tasks=[0, 1], n_eval=4, n_split=4, r_main=2, r_cal=3, r_eff=3, n_topup=4, n_eff=1,
              pilot_eps=2, pilot_eps_other=2, pilot_split_n=4)
 
