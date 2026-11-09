@@ -98,3 +98,8 @@ with a 95% paired bootstrap CI.
   velocity offset. A positive result there means that a gated mean action residual works, not that deep features carry
   it. `res28` is the non-trivial site, and the dev choice between them is reported.
 - LoRA gets the task identity for free (applied only to its own task); the memory must find it through the gate.
+
+**Amendment 2026-11-09 (compute cap, no gate change):** the first Colab run measured ~22 s per LIBERO episode
+(10-env batches of ~220 s), so the frozen design (40-task pilot + dev + test) needs ~17 L4-hours, far above the 3.6 h
+Colab cap (the cap would stop the run inside dev, before any test episode). The campaign moves to the A6000/Blackwell
+with `CM_MAX_HOURS` (default 3.6 on Colab, 24 in `run_a6000.sh`). Units, seeds, the lite rule and the gate are unchanged.

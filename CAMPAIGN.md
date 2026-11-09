@@ -62,3 +62,9 @@ from Drive. The budget is cumulative (`clock.json`), so raise `CM_MAX_HOURS` onl
 The same code runs with a larger `B` (more envs) on a workstation with many cores. Next model: `lerobot/pi05_libero_finetuned`
 (3B, flow matching, same expert structure; `sites()` needs the pi0.5 expert layer path). Larger N: all 50 init
 states x 5 demos per task.
+
+## Run on the A6000 / Blackwell (2026-11-09, see README amendment)
+`git clone -b feature/correction-memory https://github.com/jaimejarauta/decoupled-delta-net.git correction-memory`, then
+`bash correction-memory/run_a6000.sh`. Builds `.venv` (Python 3.12), stubs egl_probe, installs, runs the GPU pre-flight
+and the resumable campaign in the background with `CM_MAX_HOURS=24`. Log: `results/run.log`; verdict:
+`results/RESULTS.md`. Re-run the same command to resume.
