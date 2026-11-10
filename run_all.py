@@ -54,11 +54,18 @@ def jload(name, default=None):
         return default
 
 
+def _np(o):
+    """numpy scalars/arrays (np.bool_ from `eta_h > MAX_H` crashed json.dump mid-file on 2026-11-09/10)."""
+    if hasattr(o, "tolist"):
+        return o.tolist()
+    raise TypeError(f"not JSON serializable: {type(o)}")
+
+
 def jsave(name, obj):
     """Atomic: write tmp, fsync, rename -> a killed session never leaves a half-written file."""
     tmp = P(name) + ".tmp"
     with open(tmp, "w") as f:
-        json.dump(obj, f, indent=1)
+        json.dump(obj, f, indent=1, default=_np)
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, P(name))
@@ -130,7 +137,7 @@ class Campaign:
                 dt = time.time() - t0
                 r = dict(key=key, cond=cond, task=task, seed=seed, ids=chunk, success=succ, fired=fired, sec=dt)
                 with open(P("episodes.jsonl"), "a") as f:
-                    f.write("\n" + json.dumps(r) + "\n")   # leading \n seals a torn line left by a killed session
+                    f.write("\n" + json.dumps(r, default=_np) + "\n")   # leading \n seals a torn line left by a killed session
                 self.units[key] = r
                 self.clock.add(dt)
                 print(f"[unit] {key}: {sum(succ)}/{len(succ)} ({dt:.0f}s, total {self.clock.spent / 3600:.2f} h)", flush=True)
@@ -166,11 +173,11 @@ class Campaign:
         n_left = (len(F) * len(DEV) * (1 + 2 * len(ALPHAS) + len(LORA_LRS)) + len(F) * len(TEST) * (2 * 2 + 2 + 2 + 3)
                   + len(U) * len(TEST) * 2)
         eta_h = sec_ep * n_left / 3600 + self.clock.spent / 3600
-        lite = eta_h > MAX_H
+        lite = bool(eta_h > MAX_H)
         sel = dict(F=F, U=U[: (len(F) if lite else len(U))], pilot_rate=rate, sec_per_episode=sec_ep, eta_h=eta_h, lite=lite,
                    desc={t: self.task_desc(t) for t in F + U})
         jsave("selection.json", sel)
-        print("[select]", json.dumps({k: sel[k] for k in ("F", "U", "eta_h", "lite")}), flush=True)
+        print("[select]", json.dumps({k: sel[k] for k in ("F", "U", "eta_h", "lite")}, default=_np), flush=True)
         return sel
 
     # ---- stage 2: memories (no gradient step on weights)
