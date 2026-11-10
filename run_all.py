@@ -12,6 +12,24 @@ SETS = ("P", "noP", "trig")
 MAX_HOURS = float(os.environ.get("PI_MAX_HOURS", "12"))  # was 3.0 (README amendment 2026-11-09);                      # L4 ~3.8 CU/h -> main run capped at ~11.5 CU (+ pilot, installs < 15 CU)
 
 
+def jsave(path, obj, **kw):
+    """Atomic (tmp + fsync + rename): an interrupted Colab session never leaves a torn file on Drive."""
+    with open(path + ".tmp", "w") as f:
+        json.dump(obj, f, **kw)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(path + ".tmp", path)
+
+
+def jvalid(path):
+    try:
+        with open(path) as f:
+            json.load(f)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 def ks(cfg):
     return {b: max(1, round(b * cfg["n_base"])) for b in cfg["budgets"]}
 
@@ -66,7 +84,8 @@ def model(S, kind, k, ft):
     loss = pi.train(pred, Z, A, cfg["epochs"], cfg["lr"], cfg["bs"], S.seed)
     if kind == "clean" or k == kmax:
         os.makedirs(os.path.dirname(ck), exist_ok=True)
-        torch.save(pred.state_dict(), ck)
+        torch.save(pred.state_dict(), ck + ".tmp")
+        os.replace(ck + ".tmp", ck)
     return pred, loss
 
 
@@ -92,11 +111,11 @@ def campaign(seeds, cfg, enc, pilot=False):
         S = None
         for kind, k, ft in units(cfg, pilot):
             f = os.path.join(RES, "units", uname(seed, kind, k, ft) + ".json")
-            if os.path.exists(f):
+            if jvalid(f):                         # missing or torn -> (re)run the unit
                 continue
             S = S or Seed(seed, enc, cfg)
             r = run_unit(S, kind, k, ft)
-            json.dump(r, open(f, "w"))
+            jsave(f, r)
             print(f"[{r['unit']}] succ " + " ".join(f"{s} {np.mean(r[s]['succ']):.3f}" for s in sets_for(kind)) +
                   f"  loss {r['train_loss']:.4f}  {r['sec']}s", flush=True)
 
@@ -169,7 +188,7 @@ def analyze(pytest_ok, cfg, smoke, seeds=SEEDS):
              primary=dict(budget=max(K), k=kmax, drop_P=dP, drop_noP=dnoP, sel_minus_rand_drop_P=diff),
              smallest_passing_budget=smallest, curve=curve, persistence=pers, device=pi.DEV,
              encoder=os.environ.get("PI_ENCODER", "dino"), cfg={k: v for k, v in cfg.items()})
-    json.dump(v, open(os.path.join(RES, "verdict.json"), "w"), indent=1)
+    jsave(os.path.join(RES, "verdict.json"), v, indent=1)
 
     readme = open(os.path.join(HERE, "README.md")).read()
     gtxt = readme[readme.index("## PRE-REGISTERED GATE"):readme.index("## Files")].strip()
@@ -220,7 +239,7 @@ def pilot_check(cfg):
              sel_drop_noP=float(np.mean(g("clean", 0, "noP")) - np.mean(g("sel", kmax, "noP"))))
     sec = np.mean([get(PILOT_SEED, kind, k, ft)["sec"] for kind, k, ft in units(cfg, pilot=True)])
     p["projected_main_hours"] = float(sec * len(units(cfg)) * len(SEEDS) / 3600)
-    json.dump(p, open(os.path.join(RES, "pilot.json"), "w"), indent=1)
+    jsave(os.path.join(RES, "pilot.json"), p, indent=1)
     print("[pilot]", p, flush=True)
     return p
 
@@ -240,7 +259,7 @@ if __name__ == "__main__":
     else:
         r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "test_pi.py"], cwd=HERE)
         pytest_ok = r.returncode == 0
-        json.dump(dict(ok=pytest_ok, date=time.strftime("%Y-%m-%d %H:%M")), open(os.path.join(RES, "pytest.json"), "w"))
+        jsave(os.path.join(RES, "pytest.json"), dict(ok=pytest_ok, date=time.strftime("%Y-%m-%d %H:%M")))
         if not pytest_ok:
             raise SystemExit("pytest failed on this device -> campaign aborted (INVALID)")
         enc = pi.Encoder(os.environ.get("PI_ENCODER", "dino"))
