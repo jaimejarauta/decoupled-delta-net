@@ -114,3 +114,10 @@ to 37.9 L4-hours = 143.8 CU, above the 11 CU Colab cap. The main run moves to th
 projected). Gate, ladder order, n and seeds are unchanged.
 
 **Amendment 2026-11-09 (b):** the long run happens on Colab (long sessions, resumable across VM restarts); the notebook sets the cap to the A6000 value. The A6000 is reserved for projects with a positive Colab result.
+
+**Amendment 2026-11-11 (scout, no gate change):** before spending ~38 L4-h on the main run, a ~4 L4-h scout
+(`run_all.py --scout` / `VR_SCOUT=1`, notebook `colab_runner_vla_reachability_scout.ipynb`) runs the same main pipeline
+at reduced sizes: SmolVLA + SmolVLA-HF on tasks 0-2 (6 units), n_eval 50, 2 replicates (4 calibration, 5 efficiency),
+MC top-up 60, efficiency set 2. It reuses the finished pilot, writes to `<VR_RESULTS>/scout`, and its verdict is
+indicative only (too few units for G3, few replicates for G1/G2); the pre-registered main is unchanged and is run only
+if the scout shows calibrated splitting with E clearly > 1.

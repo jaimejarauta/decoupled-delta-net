@@ -17,6 +17,9 @@ C = dict(tasks=list(range(10)), n_eval=100, n_split=50, r_main=2, r_cal=4, r_eff
          pilot_eps=10, pilot_eps_other=8, pilot_split_n=20, budget_cu=float(os.environ.get("VR_BUDGET_CU", 11.0)), cu_per_h=3.8)
 SMOKE = dict(tasks=[0, 1], n_eval=4, n_split=4, r_main=2, r_cal=3, r_eff=3, n_topup=4, n_eff=1,
              pilot_eps=2, pilot_eps_other=2, pilot_split_n=4)
+# Scout (README amendment 2026-11-11): ~4 L4-h exploratory run, SmolVLA family on tasks 0-2, own results dir,
+# reuses the finished pilot. Indicative only: the frozen gate is reported but is NOT the pre-registered main result.
+SCOUT = dict(tasks=[0, 1, 2], n_eval=50, r_main=2, r_cal=4, r_eff=5, n_topup=60, n_eff=2)
 
 
 def P(*a):
@@ -201,7 +204,7 @@ def main_run(pl):
 
 
 # ---------------------------------------------------------------- analysis (frozen gate)
-def analyze(pytest_ok, smoke):
+def analyze(pytest_ok, smoke, scout=False):
     pl, sets = jload("pilot.json"), jload("sets.json")
     units = [tuple(u) for u in sets["units"]]
     U = {}
@@ -249,7 +252,7 @@ def analyze(pytest_ok, smoke):
     readme = open(os.path.join(HERE, "README.md")).read()
     gate = readme[readme.index("## FROZEN GATE"):readme.index("## Files")].strip()
     f3 = lambda x: "nan" if x is None or not np.isfinite(x) else f"{x:.3g}"
-    L = [f"# RESULTS - vla-reachability{' (SMOKE TEST, NOT A RESULT)' if smoke else ''}", "",
+    L = [f"# RESULTS - vla-reachability{' (SMOKE TEST, NOT A RESULT)' if smoke else ''}{' (SCOUT ~4 h, indicative, not the pre-registered main)' if scout else ''}", "",
          f"Generated {v['date']} by run_all.py. Suite {__import__('sim').SUITE}, K={__import__('sim').K} actions per decision.", "",
          f"## Overall verdict: **{ov}**", "",
          f"Validity: pytest pre-flight {'PASS' if pytest_ok else 'FAIL'}; pilot SmolVLA SR {pl['smolvla_sr']:.3f} "
@@ -266,7 +269,7 @@ def analyze(pytest_ok, smoke):
     L += ["", "## Secondary (not gated)", "", f"```\n{json.dumps(sec, indent=1, default=float)}\n```", "",
           "## Gate (verbatim from README)", "", gate, ""]
     open(P("RESULTS.md"), "w").write("\n".join(L))
-    if not smoke:
+    if not smoke and not scout:
         shutil.copy(P("RESULTS.md"), os.path.join(HERE, "RESULTS.md"))
     print("\n".join(L[:20]))
     return v
@@ -276,14 +279,22 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--smoke", action="store_true", help="tiny sizes, separate dir; validates plumbing only")
     ap.add_argument("--analyze-only", action="store_true")
+    ap.add_argument("--scout", action="store_true", help="~4 h indicative run (SCOUT sizes, SmolVLA family), own dir")
     ap.add_argument("--force-main", action="store_true", help="run main even if pilot abandon flags are set")
     a = ap.parse_args()
     if a.smoke:
         C.update(SMOKE)
         RES = os.path.join(RES, "smoke")
+    scout = a.scout or os.environ.get("VR_SCOUT") == "1"
+    if scout:
+        C.update(SCOUT)
+        parent, RES = RES, os.path.join(RES, "scout")
+        os.makedirs(RES, exist_ok=True)
+        if not os.path.exists(P("pilot.json")):   # reuse the finished pilot (never its episodes)
+            shutil.copy(os.path.join(parent, "pilot.json"), P("pilot.json"))
     os.makedirs(RES, exist_ok=True)
     if a.analyze_only:
-        analyze(jload("pytest.json")["ok"], a.smoke)
+        analyze(jload("pytest.json")["ok"], a.smoke, scout)
         sys.exit()
     env = dict(os.environ, VR_REQUIRE_SIM="1", VR_REQUIRE_GPU="0" if os.environ.get("VR_FAKE_POLICY") == "1" else "1")
     ok = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "test_reach.py"], cwd=HERE, env=env).returncode == 0
@@ -296,7 +307,9 @@ if __name__ == "__main__":
         raise SystemExit("pilot validity failed (SmolVLA SR < 0.5: policy/obs pipeline broken) -> INVALID, main not run")
     if any(pl["abandon"].values()) and not a.force_main:
         raise SystemExit(f"pre-registered abandon signal {pl['abandon']} -> main not run (use --force-main to override, dated README note)")
-    if pl["plan"]["cu"] > C["budget_cu"] and not a.smoke:
+    if scout:
+        pl["plan"] = dict(policies=[p for p in CHEAP if not pl.get("load_error", {}).get(p)], tasks=C["tasks"])
+    elif pl["plan"]["cu"] > C["budget_cu"] and not a.smoke:
         raise SystemExit(f"projected main {pl['plan']['cu']:.1f} CU > {C['budget_cu']} even after the ladder -> stop, amend README")
     main_run(pl)
-    analyze(ok, a.smoke)
+    analyze(ok, a.smoke, scout)
