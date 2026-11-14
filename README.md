@@ -178,6 +178,10 @@ Development findings (`explore_b.py`, `zones.py`; delivery days up to 2025-12-31
   megawatt floor nor fixed regional floors predicts how many units are added in a given hour; same-hour-yesterday
   does better (R2 0.32). The floors hold as lower bounds (97-100% of hours) but REE adds more units than the floor,
   in a way that depends on the hour and season. The determinants are the open question.
+- Feasibility of H4 (same split): a gradient-boosting model of units added per hour from market commitment by
+  region, demand and renewable proxies, hour and weekday reaches R2 -0.19 (0.02 with the latest public lag);
+  the latest public lag alone -0.12. Hour-level unit decisions look unpredictable from these public inputs, so
+  H4 should not be a headline; the paper should rest on T1-T3 and the description.
 
 DRAFT gate (not frozen; to be agreed with the user before any 2026 number is computed). Test window 2026-01-01..
 2026-08-16:
