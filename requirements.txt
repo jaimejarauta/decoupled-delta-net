@@ -1,5 +1,7 @@
-numpy
-pandas
-scikit-learn
-xlrd
+numpy==2.5.4
+pandas==3.1.1
+scikit-learn==1.9.1
+scipy==1.18.1
+joblib==1.6.0
+xlrd==2.0.2
 pytest

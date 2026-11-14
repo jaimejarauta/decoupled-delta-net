@@ -28,7 +28,7 @@ OUT = rb.DATA
 def predictions(df):
     """All forecasts for [EVAL_START, last day]: one column per group|model|scheme, plus the naive ones."""
     cfg = [(g, m, s) for g in GROUPS for m in MODELS for s in SCHEMES]
-    cols = Parallel(n_jobs=4)(delayed(rb.backtest)(df, g, m, s, EVAL_START, df.index.max()) for g, m, s in cfg)
+    cols = Parallel(n_jobs=min(4, os.cpu_count() or 1))(delayed(rb.backtest)(df, g, m, s, EVAL_START, df.index.max()) for g, m, s in cfg)
     P = pd.DataFrame({"|".join(c): p for c, p in zip(cfg, cols)})
     return P.join(rb.naive(df).reindex(P.index))
 
