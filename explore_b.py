@@ -7,7 +7,7 @@ DEV_END = "2025-12-31"
 BREAK = "2025-04-28"
 
 
-def hourly(until=DEV_END):
+def hourly(until=DEV_END, units=False):
     um = i90.unit_map()
     p1 = pd.read_csv("data/i90/phase1.csv.gz")
     p1 = p1[(p1.date <= until) & (p1.Sentido == "Subir") & p1.Redespacho.str.startswith("UPOPVP")]
@@ -35,7 +35,7 @@ def hourly(until=DEV_END):
     H["S_post"] = H.S_mkt + H.R_sync
     H = H.reset_index()
     H["period"] = np.where(H.date < "2025-04-28", "pre", np.where(H.date <= "2025-04-30", "gap", "post_dev"))
-    return H
+    return (H, post) if units else H
 
 
 if __name__ == "__main__":

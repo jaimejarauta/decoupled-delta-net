@@ -183,12 +183,20 @@ Development findings (`explore_b.py`, `zones.py`; delivery days up to 2025-12-31
   the latest public lag alone -0.12. Hour-level unit decisions look unpredictable from these public inputs, so
   H4 should not be a headline; the paper should rest on T1-T3 and the description.
 
-DRAFT gate (not frozen; to be agreed with the user before any 2026 number is computed). Test window 2026-01-01..
-2026-08-16:
-- T1 (count rule persists): slope of CCGT units online after Phase I on market CCGT units (market <= 10) <= 0.35,
-  and median units online >= 14 (dev 0.20 and 18; 2024: 0.64 and 7).
-- T2 (regional must-run persists): at least 6 of 8 regions have a CCGT online in >= 95% of hours (dev 7; 2024 1).
-- T3 (relaxation in summer 2026): median CCGT units online 2026-07-16..08-16 at least 2 below the same window of
-  2025 (16; 2024 window: 10).
-- Determinants (H4, to design): a model of units added per hour from public pre-Phase-I information (market
-  commitment by region, demand, hour, solar/wind schedule) beats same-hour-yesterday by >= X in MAE.
+Gate (frozen 2026-11-14, before any 2026 number was computed; approved by the user on 2026-11-14). Script
+`optionb.py test`, one shot, test window 2026-01-01..2026-08-16 (all published I90 days at freeze time). `optionb.py
+dev` reproduces the development numbers below (pre = 2024-01-01..2025-04-27, post = 2025-05-01..2025-12-31).
+Definitions: "units online" = CCGT programming units (OMIE technology map) with more than 1 MWh in an hour after
+Phase I (PDBF + Phase-I upward redispatch); "market units" = the same count in the PDBF; slope = OLS slope of units
+online on market units over hours with market units <= 10; region cover = share of hours with at least one CCGT of
+that region online (regions from `zones.py`).
+- Validity (all must hold, else INVALID): V1 Phase-I data for >= 95% of test days; V2 reconstructed daily upward
+  Phase-I energy within 1% of `rd_up` (target y) on >= 95% of days; V3 >= 85% of Phase-I upward energy mapped to a
+  technology. Dev: 245/245 days, 100%, 99.9%.
+- T1 (count rule persists): slope <= 0.35 and median units online >= 14 (dev post 0.199 and 18; pre 0.644 and 7).
+- T2 (regional must-run persists): at least 6 of 8 regions have cover >= 95% (dev post 7; pre 1).
+- T3 (relaxation in summer 2026): median units online 2026-07-16..08-16 at most the 2025-07-16..08-16 median minus 2
+  (2025 window 16, so <= 14; 2024 window 10). Motivated by an unverified press report of a July 2026 CNMC resolution.
+- Verdict: PASS if T1, T2 and T3 hold; FAIL if none holds; MIXED otherwise.
+- H4 (hourly determinants) is dropped from the gate: on development data no model beat R2 ~0 (see above). The
+  2026 monthly medians are reported, not gated.
