@@ -138,3 +138,53 @@ were not changed by it.
   suggest it). H2 breakdown holds for `gbm`, less clearly for `ridge` and `gbm_d`, whose lag terms follow a level
   shift; adaptation gain uncertain. H3 uncertain: after the break the target may be steadier and persistence
   harder to beat.
+
+## Option B (started 2026-11-14): what did reinforced operation require? Unit-level reconstruction from I90
+
+Why: an external audit (`../research/audit-2026-11-14.md`) judged the daily-aggregate paper too weak for PowerTech.
+The daily forecasts above stay as background; this section is a new question on new, finer data.
+
+Question: after the blackout, which rule does REE's Phase-I upward redispatch follow? Is it a floor on synchronous
+megawatts, on the number of combined-cycle (CCGT) units online, or a regional must-run set, and how did it change
+between May 2025 and August 2026?
+
+Data (all public, no token): ESIOS archive 34 (`I90DIA`, 90-day lag), one zip per day, 2024-01-01..2026-08-16 (959
+days, `i90.py fetch`). Sheet I90DIA03 = Phase-I solution per programming unit, quarter-hour, restriction type; summed
+over `UPOPVP*`/Subir it reproduces the daily target `y` within 0.1% on 99.7% of days (2024-06-11 and 2024-06-25 are
+off by 9% and 17%, not explained; 2024-06-26 and 2025-04-29 have no sheet). Sheet I90DIA26 = PDBF per unit; summed by
+technology it reproduces the daily I3DIA PDBF for CCGT and nuclear exactly (checked on two days). Technology per unit
+from OMIE's public list of offering units (`data/units_omie.csv`, downloaded 2026-11-14 from
+https://www.omie.es/sites/default/files/dados/listados/LISTA_UNIDADES.XLS); 89% of Phase-I upward energy maps directly,
+the rest after stripping OMIE's R/G suffix and two hand mappings. CCGT regions are assigned by hand from plant names
+(`zones.py`), an assumption to check against REE's network map.
+
+Prior art for this question (search agent, 2026-11-14; snippets only for some items): Davi-Arderius & Graf (SSRN
+5429395) show the aggregate shift to more CCGT redispatch; a Substack post (R. García Ruiz, 2026-06-04) uses i90 to
+describe unit concentration of post-blackout redispatch, no rule; a GitHub repo (Mansouri) predicts per-unit up/down
+redispatch; Rouco, Echavarren & Lobato (SEGAN 45, 102125, 2026) analyse the blackout mechanism. No official minimum
+of synchronous groups per zone was found; reinforced operation is not in the P.O.s. CNMC modified P.O. 3.1, 3.2, 7.2
+on 2025-10-20 (DCOOR/DE/008/25) and 2026-01-19 (DCOOR/DE/010/25); press reports a July 2026 CNMC resolution easing
+renewable voltage control and cutting CCGT scheduling (unverified). Restriction codes have no official definition
+found (secondary reading: SOT/COT voltage, RSI system security, SCA/SCB overloads, RTD distribution).
+
+Development findings (`explore_b.py`, `zones.py`; delivery days up to 2025-12-31 only; 2026 not read):
+- CCGT units online after Phase I, per hour: median 7 before the blackout, 18 after (May-Dec 2025); 1st percentile
+  2 vs 11. Their count barely follows the market's own CCGT commitment after the blackout (slope 0.20 for market
+  counts up to 10, vs 0.64 before).
+- Regional cover: share of hours with at least one CCGT online, by region. Before: 1 of 8 regions at >= 95% of
+  hours. After: 7 of 8 (Levante 85%). Specific plants are almost always on: Escatrón 3 (93% of hours), Algeciras 3
+  (90%), Castejón 3 (84%), Aceca 4 (82%); none exceeded 61% before.
+- Neither a single system-wide count floor (R2 0.05-0.08 for units added, Oct-Dec 2025, floor fitted May-Sep) nor a
+  megawatt floor nor fixed regional floors predicts how many units are added in a given hour; same-hour-yesterday
+  does better (R2 0.32). The floors hold as lower bounds (97-100% of hours) but REE adds more units than the floor,
+  in a way that depends on the hour and season. The determinants are the open question.
+
+DRAFT gate (not frozen; to be agreed with the user before any 2026 number is computed). Test window 2026-01-01..
+2026-08-16:
+- T1 (count rule persists): slope of CCGT units online after Phase I on market CCGT units (market <= 10) <= 0.35,
+  and median units online >= 14 (dev 0.20 and 18; 2024: 0.64 and 7).
+- T2 (regional must-run persists): at least 6 of 8 regions have a CCGT online in >= 95% of hours (dev 7; 2024 1).
+- T3 (relaxation in summer 2026): median CCGT units online 2026-07-16..08-16 at least 2 below the same window of
+  2025 (16; 2024 window: 10).
+- Determinants (H4, to design): a model of units added per hour from public pre-Phase-I information (market
+  commitment by region, demand, hour, solar/wind schedule) beats same-hour-yesterday by >= X in MAE.
