@@ -200,3 +200,18 @@ that region online (regions from `zones.py`).
 - Verdict: PASS if T1, T2 and T3 hold; FAIL if none holds; MIXED otherwise.
 - H4 (hourly determinants) is dropped from the gate: on development data no model beat R2 ~0 (see above). The
   2026 monthly medians are reported, not gated.
+
+Test result (2026-11-14, one shot, `optionb.py test`, `data/optionb_verdict.json`): **FAIL**. Validity holds (228/228
+days, 100% of days within 1% of `rd_up`, 99.9% of energy mapped).
+- T1 fails: slope 2.11 (threshold <= 0.35; dev 0.20); median units online 16 (>= 14 holds). Market CCGT units are 0 in
+  most hours in every period (PDBF CCGT median 0 MW in most months), so the slope is fitted mostly on the few hours
+  with market CCGT; in 2026 those are the hours where REE also adds many more units (mean online 16 at 0 market
+  units, 20 at 1, 27-33 at 3-10). The slope reflects that co-movement, not a single count rule.
+- T2 fails: 5 of 8 regions with cover >= 95% (threshold 6; dev 7). Centre 73%, Levante 87%, Ebro 94.2%; the other
+  five are 98-100%.
+- T3 fails: the 2026-07-16..08-16 median is 20 units online, above the 2025 window (16); no summer relaxation.
+- Not gated, monthly median (1st percentile) of CCGT units online in 2026: Jan 16 (9), Feb 16 (9), Mar 17 (11),
+  Apr 15 (9), May 15 (7), Jun 14 (9), Jul 19 (9), Aug 23.5 (9). The 2024-01-01..2025-04-27 period was median 7 (2).
+- Reading (exploratory): reinforced operation is still in force in 2026 (about twice the pre-blackout count), but it
+  is not a fixed count or a fixed regional set. The count moved with season and system conditions, and the summer
+  2026 relaxation reported in the press does not show in the August 2026 data.
