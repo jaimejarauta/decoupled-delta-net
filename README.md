@@ -215,3 +215,5 @@ days, 100% of days within 1% of `rd_up`, 99.9% of energy mapped).
 - Reading (exploratory): reinforced operation is still in force in 2026 (about twice the pre-blackout count), but it
   is not a fixed count or a fixed regional set. The count moved with season and system conditions, and the summer
   2026 relaxation reported in the press does not show in the August 2026 data.
+
+Status: project dropped by the user on 2026-11-14 after the Option B FAIL (daily paper already dropped after the external audit). No submission planned.
